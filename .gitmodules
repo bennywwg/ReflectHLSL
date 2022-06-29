@@ -1,0 +1,3 @@
+[submodule "parsegen"]
+	path = parsegen
+	url = https://github.com/sandialabs/parsegen-cpp
