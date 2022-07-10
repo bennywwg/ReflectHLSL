@@ -4,21 +4,23 @@
 #include <vector>
 #include <variant>
 #include <any>
+#include <memory>
 
 namespace ReflectHLSL {
-    struct LiteralValue {
-        std::variant<int, uint32_t, float, bool, LiteralTree> value;
-        std::string format() const;
-    };
-    
+    struct LiteralValue;
+
     struct LiteralTree {
-        std::vector<LiteralValue> children;
+        std::vector<std::shared_ptr<LiteralValue>> children;
 
         std::string format() const;
         std::string generateLiteral() const;
     };
 
-    using LiteralList = std::vector<LiteralTree>;
+    struct LiteralValue {
+        std::variant<int, uint32_t, float, bool, LiteralTree> value;
+        std::string format() const;
+    };
+
 
     struct Semantic {
         std::string semanticName;

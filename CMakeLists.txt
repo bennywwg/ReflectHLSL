@@ -14,8 +14,8 @@ add_executable (ReflectHLSL
 	src/Generator.hpp
 )
 
-target_include_directories(ReflectHLSL PRIVATE parsegen/src)
-target_include_directories(ReflectHLSL PRIVATE glm)
+target_include_directories (ReflectHLSL PRIVATE parsegen/src)
+target_include_directories (ReflectHLSL PRIVATE glm)
 
 target_link_libraries (ReflectHLSL LINK_PUBLIC parsegen)
 

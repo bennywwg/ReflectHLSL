@@ -6,6 +6,7 @@
 #include <map>
 #include <variant>
 #include <tuple>
+#include <cxxabi.h>
 
 #include <parsegen.hpp>
 
@@ -13,23 +14,29 @@
 
 namespace ReflectHLSL {
     using namespace std;
+    
+    std::string demangle(const char* mangled) {
+        int status;
+        std::unique_ptr<char[], void (*)(void*)> result(
+            abi::__cxa_demangle(mangled, 0, 0, &status), std::free);
+        return result.get() ? std::string(result.get()) : "error occurred";
+    }
 
-    struct AutoTyper {
-        
-    };
+    template<class T>
+    string DemangleName() {
+        return demangle(typeid(T).name());
+    }
 
-    struct HLSL {
-        using ProductionCallback = std::function<std::any(LangTree const&)>;
-        using TokenCallback = std::function<std::any(std::string const&)>;
+    string DemangleName(any const& a) {
+        return demangle(a.type().name());
+    }
 
-        std::map<int, ProductionCallback> prodCallbacks;
-        std::map<int, TokenCallback> tokenCallbacks;
-
+    struct HLSL : public parsegen::language {
         parsegen::parser_tables_ptr tables;
-        parsegen::language lang;
 
-        map<string, string> norm;
-        map<int, function<any(vector<any>&)>> rules;
+        map<string, string> norm; // map from typeid name to normalized name suitable for parsegen
+        map<int, function<any(vector<any>&)>> productionCallbacks;
+        map<int, function<any(string&)>> tokenCallbacks;
         uint32_t nextID = 0;
 
         string ToAlpha(int value) {
@@ -44,10 +51,29 @@ namespace ReflectHLSL {
             if (norm.find(name) == norm.end()) {
                 ++nextID;
                 norm[name] = ToAlpha(nextID);
-                std::cout << "Added " << name << " as " << norm[name] << "\n";
             }
 
             return norm[name];
+        }
+
+        template<size_t I, typename Tuple>
+        auto any_get(vector<any>& anys) {
+            return std::any_cast<decltype(std::get<I>(Tuple()))>(anys[I]);
+        }
+
+        template<typename Function, typename Tuple, size_t ... I>
+        auto call3(Function f, Tuple*, vector<any>& anys, std::index_sequence<I ...>) {
+            return f(any_get<I, Tuple>(anys) ...);
+        }
+
+        template<typename Function, typename Tuple, typename ...Args>
+        auto call2(Function f, vector<any>& anys) {
+            return call3(
+                f,
+                (Tuple*)(nullptr),
+                anys,
+                std::make_index_sequence<sizeof...(Args)>{}
+            );
         }
 
         template<typename Function, typename Tuple, size_t ... I>
@@ -63,28 +89,36 @@ namespace ReflectHLSL {
 
         template<int Index, typename ...Args>
         typename std::enable_if<Index == 0, void>::type
+        PackAnys(tuple<Args...>&, vector<any>&) { }
+
+        template<int Index, typename ...Args>
+        typename std::enable_if<Index == 1, void>::type
         PackAnys(tuple<Args...>& args, vector<any>& anys) {
             get<0>(args) = any_cast<decltype(get<0>(args))>(anys[0]);
         }
 
         template<int Index, typename ...Args>
-        typename std::enable_if<Index != 0, void>::type
+        typename std::enable_if<(Index > 1), void>::type
         PackAnys(tuple<Args...>& args, vector<any>& anys) {
             PackAnys<Index - 1, Args...>(args, anys);
-            get<Index>(args) = any_cast<decltype(get<Index>(args))>(anys[Index]);
+            get<Index - 1>(args) = any_cast<decltype(get<Index - 1>(args))>(anys[Index - 1]);
         }
+
+        template<typename ...Args>
+        typename std::enable_if<sizeof...(Args) == 0, void>::type
+        RegTypes(vector<string>&) { };
 
         template<typename R, typename ...Args>
         typename std::enable_if<sizeof...(Args) == 0, void>::type
         RegTypes(vector<string>& res) {
-            res[0] = GetType(typeid(R).name());
+            res.back() = GetType(DemangleName<R>());
         };
 
         template<typename R, typename ...Args>
         typename std::enable_if<sizeof...(Args) != 0, void>::type
         RegTypes(vector<string>& res) {
             RegTypes<Args...>(res);
-            res[sizeof...(Args)] = GetType(typeid(R).name());
+            res[res.size() - sizeof...(Args) - 1] = GetType(DemangleName<R>());
         };
 
         template<typename R, typename ...Args>
@@ -92,258 +126,232 @@ namespace ReflectHLSL {
             vector<string> rhs; rhs.resize(sizeof...(Args));
             RegTypes<Args...>(rhs);
 
-            const string lhs = GetType(typeid(R).name());
+            const string lhs = GetType(DemangleName<R>());
 
-            rules[static_cast<int>(lang.productions.size())] = [this, func](vector<any>& anys) -> any {
+            productionCallbacks[static_cast<int>(productions.size())] = [this, func](vector<any>& anys) -> any {
                 tuple<Args...> args;
-                PackAnys<sizeof...(Args) - 1, Args...>(args, anys);
+                PackAnys<sizeof...(Args), Args...>(args, anys);
                 return call(func, args);
+                //return call2<function<R(Args...)> const&, tuple<Args...>, Args...>(func, anys);
             };
 
-            lang.productions.push_back({ lhs, rhs });
+            productions.push_back({ lhs, rhs });
         }
 
         template<typename F>
         void Rule(F lambda) { AddRule_Internal(function(lambda)); }
 
-        void r(std::string const& lhs, std::vector<std::string> const& rhs) {
-            lang.productions.push_back({ lhs, rhs });
-        }
-        void r(std::string const& lhs, std::vector<std::string> const& rhs, ProductionCallback const& cb) {
-            r(lhs, rhs);
-            prodCallbacks[static_cast<int>(lang.productions.size() - 1)] = cb;
+        template<typename R, typename ...Args>
+        void AddToken_Internal(function<R(string&)> const& func, string const& regex) {
+            const string lhs = GetType(DemangleName<R>());
+
+            tokenCallbacks[static_cast<int>(tokens.size())] = [this, func](string& val) -> any {
+                return func(val);
+            };
+
+            tokens.push_back( { lhs, regex });
         }
 
-        void t(std::string const& tok, std::string const& reg) {
-            lang.tokens.push_back({ tok, reg });
+        template<typename F>
+        void Token(F lambda, string const& regex) { AddToken_Internal(function(lambda), regex); }
+
+        template<typename T>
+        void Token(string const& regex) { AddToken_Internal(function([](string&) { return T { }; }), regex); }
+        
+        // Unused
+        /*
+        void MakeTokens() {
+            Token<TPlus>("+");
+            Token<TMinus>("-");
+            Token<TNot>("!");
+            Token<TMul>("*");
+            Token<TDiv>("/");
+            Token<TMod>("%");
+            Rule([](TL, TL) { return TShiftL { }; });
+            Rule([](TG, TG) { return TShiftR { }; });
+            Token<TAssign>("=");
+            Token<TL>("<");
+            Rule([](TL, TAssign) { return TLEQ { }; });
+            Token<TG>(">");
+            Rule([](TG, TAssign) { return TGEQ { }; });
+            Rule([](TAssign, TAssign) { return TEQ { }; });
+            Rule([](TNot, TAssign) { return TNEQ { }; });
+            Token<TBitAND>("&");
+            Token<TBitXOR>("^");
+            Token<TBitOR>("|");
+            Token<TBitNOT>("~");
+            Rule([](TBitAND, TBitAND) { return TAnd { }; });
+            Rule([](TBitOR, TBitOR) { return TOr { }; });
+            Token<TQuestion>("?");
+            Token<TColon>(":");
+            Token<TSemicolon>(";");
+            Token<TComma>(",");
+            Token<TLParen>("(");
+            Token<TLParen>(")");
+            Token<TLBrack>("[");
+            Token<TRBrack>("]");
+            Token<TLBrace>("{");
+            Token<TRBrace>("}");
+
+            Token<TSpace>(parsegen::regex::whitespace());
+            Token([](string& text) {
+                return TInt { strtoll(text.data(), nullptr, 10) };
+            }, parsegen::regex::unsigned_integer());
+            Token([](string& text) {
+                return TFloat { strtod(tex.data(), nullptr) };
+            }, parsegen::regex::unsigned_floating_point_not_integer());
+            Token([](string& text) {
+                return TID { text }; 
+            }, parsegen::regex::identifier());
+
+            Rule([]() { return MaybeSpace { };});
+            Rule([](TSpace) { return MaybeSpace { };});
+
+            Rule([](TLParen, TID const& id, TRParen) {
+                return Cast { id.ID };
+            });
+        }*/
+
+        void InitRules() {
+
+            // Token
+            struct Space { };
+            struct Semicolon { };
+            struct Equals { };
+            struct Colon { };
+            struct Comma { };
+            struct ID { string Val; };
+            struct Float { string Val; };
+            struct Int { string Val; };
+            struct Op { string Val; };
+            struct LBrace { };
+            struct RBrace { };
+            struct LBrack { };
+            struct RBrack { };
+            struct LParen { };
+            struct RParen { };
+
+            // Nonterminals
+            using Literal = variant<LiteralValue, LiteralTree>;
+            using LiteralList = std::vector<Literal>;
+            struct Program { DeclarationList Declarations; };
+            struct FunctionScope { };
+            struct ArrayLiteral { LiteralList Literals; };
+            struct MaybeSpace { };
+            struct Scope { };
+            struct AnyOp { };
+            struct Any { };
+            struct AnyList { };
+            struct FDecl { };
+            struct Param { };
+            struct ParamList { };
+            struct Default { Literal Val; };
+            struct ArrayQual { };
+            using MaybeArrayQual = optional<ArrayQual>;
+            struct Semantic {
+                ID id;
+            };
+            using MaybeSemantic = optional<Semantic>;
+            struct SemanticParens { 
+                ID id;
+            };
+            using MaybeSemanticParens = optional<SemanticParens>;
+            struct StructBody { };
+            using DeclMode = optional<variant<Default, StructBody>>;
+            struct VarDecl {
+                IDList ids;
+                MaybeArrayQual arrayQual;
+                MaybeSemantic semantic;
+                DeclMode mode;
+            };
+
+            Rule([]() { return Semantic { ID { "" }}; });
+            Rule([]() { return Semantic { ID { "" }}; });
+
+            Rule([]() { return OptSemanticParens(std::nullopt); });
+            Rule([](LParen, MaybeSpace, ID id, MaybeSpace, RParen, MaybeSpace){ return MaybeSemanticParens { SemanticParens { id } }; });
+
+            Rule([](LBrace, MaybeSpace, MaybeDecList, RBrace, MaybeSpace){ return StructBody { }; });
+
+            Rule([]() { return MaybeDecList(std::nullopt); });
+            Rule([](DeclarationList decList) { return MaybeDecList(decList); });
+
+            Rule([](){ return DeclMode(std::nullopt); });
+            Rule([](Default def){ return DeclMode(def); });
+            Rule([](StructBody){ return DeclMode(StructBody {}); });
+
+            Rule([](
+                IDList ids,
+                MaybeSpace,
+                MaybeArrayQual arr,
+                MaybeSemantic sem,
+                DeclMode mode,
+                Semicolon,
+                MaybeSpace
+            ) {
+                return VarDecl { ids, arr, sem, mode };
+            });
+
+            Rule([](IDList) { return Param { };});
+            Rule([](IDList, MaybeSpace, Colon, MaybeSpace, ID) { return Param { };});
+            Rule([](MaybeSpace) { return ParamList { };});
+            Rule([](Param) { return ParamList { };});
+            Rule([](ParamList, AnyOp, MaybeSpace, Param) { return ParamList { };});
+
+            Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace){return FDecl { }; });
+            Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace){return FDecl { }; });
+
+            Rule([](Op) { return AnyOp { };});
+            Rule([](Comma) { return AnyOp { };});
+
+            Rule([](LParen) { return Any { };});
+            Rule([](RParen) { return Any { };});
+            Rule([](LBrack) { return Any { };});
+            Rule([](RBrack) { return Any { };});
+            Rule([](Equals) { return Any { };});
+            Rule([](Semicolon) { return Any { };});
+            Rule([](Colon) { return Any { };});
+            Rule([](AnyOp) { return Any { };});
+            Rule([](ID) { return Any { };});
+            Rule([](Float) { return Any { };});
+            Rule([](Int) { return Any { };});
+            Rule([](Scope) { return Any { };});
+            Rule([](Space) { return Any { };});
+
+            Rule([](Any) { return AnyList { };});
+            Rule([](AnyList, Any) { return AnyList { };});
+
+            Rule([](){ return MaybeSpace { };});
+            Rule([](Space){ return MaybeSpace { };});
+
+            Token<Space>(parsegen::regex::whitespace());
+            Token<Semicolon>(";");
+            Token<Equals>("=");
+            Token<Colon>(":");
+            Token<Comma>(",");
+            Token<ID>(parsegen::regex::identifier());
+            Token<Float>(parsegen::regex::signed_floating_point());
+            Token<Int>(parsegen::regex::signed_integer());
+            Token<Op>("[\\.\\*\\/\\|\\+\\-<>&\\?]");
+            Token<LBrace>("\\{");
+            Token<RBrace>("\\}");
+            Token<LBrack>("\\[");
+            Token<RBrack>("\\]");
+            Token<LParen>("\\(");
+            Token<RParen>("\\)");
         }
-        void t(std::string const& tok, std::string const& reg, TokenCallback const& cb) {
-            t(tok, reg);
-            tokenCallbacks[static_cast<int>(lang.tokens.size() - 1)] = cb;
+
+        inline virtual string denormalize_name(string const& normalized) const override {
+            for (auto it : norm) {
+                if (it.second == normalized) return it.first;
+            }
+            throw std::runtime_error("Couldn't denormalize name");
         }
 
         HLSL() {
-            struct Space { };
-            struct MaybeSpace { };
-            struct LeftBrace { };
-            struct RightBrace { };
-            struct Any { string text; };
-            struct AnyList { vector<Any> text; };
-            struct Scope { };
-            struct FunctionDecl { };
+            InitRules();
 
-            Rule([](MaybeSpace, DeclarationList list) { return ProgramDeclaration { list }; });
-
-            Rule([](LeftBrace, RightBrace) { return Scope { }; });
-            Rule([](LeftBrace, AnyList, RightBrace) { return Scope { }; }); // TODO: Include text from the any list
-
-            Rule([](AnyDeclaration decl) { return DeclarationList{ decl }; });
-
-            Rule([](DeclarationList list, AnyDeclaration decl) {
-                list.push_back(decl);
-                return list;
-            });
-
-            Rule([](Declaration var) { return AnyDeclaration{ var }; });
-
-            //r("program", { "s?", "declist" },
-            //    [](LangTree const& tree) {
-            //        DeclarationList list = std::any_cast<DeclarationList>(tree.children[1].data);
-            //        ProgramDeclaration prog = { list };
-            //        std::cout << prog.format();
-            //        return prog;
-            //    });
-
-            //r("scope", { "lb", "rb" });
-            //r("scope", { "lb", "anylist", "rb" });
-
-            //r("declist", { "decl" },
-            //    [](LangTree const& tree) {
-            //        return DeclarationList{ std::any_cast<AnyDeclaration>(tree.children[0].data) };
-            //    }
-            //);
-            //r("declist", { "declist", "decl" },
-            //    [](LangTree const& tree) {
-            //        DeclarationList list = std::any_cast<DeclarationList>(tree.children[0].data);
-            //        try {
-            //            list.push_back(std::any_cast<AnyDeclaration>(tree.children[1].data));
-            //        }
-            //        catch (std::bad_any_cast const&) {}
-            //        return list;
-            //    });
-
-            r("decl", { "vardecl" });
-            r("decl", { "allfdecl" });
-
-            Rule([](string id) { return IDList{ id }; });
-            Rule([](IDList& ids, Space, string id) {
-                ids.push_back(id);
-                return std::move(ids);
-            });
-            //r("idlist", { "id" },
-            //    [](LangTree const& tree) { return IDList{ tree.text }; });
-            //r("idlist", { "idlist", "space", "id" },
-            //    [](LangTree const& tree) {
-            //        IDList res = std::any_cast<IDList>(tree.children[0].data);
-            //        res.push_back(tree.children[2].text);
-            //        return res;
-            //    });
-
-            r("literallist", { "literal" },
-                [](LangTree const& tree) {
-                    return LiteralList{ std::any_cast<LiteralTree>(tree.children[0].data) };
-                });
-            r("literallist", { "literallist", "s?", ",", "s?", "literal" },
-                [](LangTree const& tree) {
-                    LiteralList literals = std::any_cast<LiteralList>(tree.children[0].data);
-                    literals.push_back(std::any_cast<LiteralTree>(tree.children[4].data));
-                    return literals;
-                });
-
-            r("arrayliteral", { "lb", "s?", "literallist", "s?", "rb" },
-                [](LangTree const& tree) {
-                    return LiteralTree{ false, "", std::any_cast<LiteralList>(tree.children[2].data) };
-                });
-
-            r("valueliteral", { "float" });
-            r("valueliteral", { "int" });
-            r("valueliteral", { "id" });
-            r("literal", { "valueliteral" },
-                [](LangTree const& tree) {
-                    return LiteralTree{ true, tree.children[0].children[0].text, { } };
-                });
-            r("literal", { "arrayliteral" });
-
-            r("default", { "=", "s?", "literal", "s?" });
-
-            r("arrayqual", {},
-                [](LangTree const&) { return ArrayQual{ false, "" }; });
-            r("arrayqual", { "lbr", "s?", "int", "s?", "rbr", "s?" },
-                [](LangTree const& tree) { return ArrayQual{ true, tree.children[2].text }; });
-            r("arrayqual", { "lbr", "s?", "id", "s?", "rbr", "s?" },
-                [](LangTree const& tree) { return ArrayQual{ true, tree.children[2].text }; });
-
-            r("optsemantic", {},
-                [](LangTree const& tree) {
-                    return Semantic{ "", "" };
-                });
-            r("optsemantic", { ":", "s?", "id", "s?", "optsemanticparens" },
-                [](LangTree const& tree) {
-                    return Semantic{ tree.children[2].text, std::any_cast<std::string>(tree.children[4].data) };
-                });
-            r("optsemanticparens", {},
-                [](LangTree const& tree) {
-                    return std::string("");
-                });
-            r("optsemanticparens", { "lp", "s?", "id", "s?", "rp", "s?" },
-                [](LangTree const& tree) {
-                    return tree.children[2].text;
-                });
-
-            r("structbody", { "lb", "s?", "declist?", "rb", "s?" });
-            r("declist?", {},
-                [](LangTree const& tree) {
-                    return DeclarationList{ };
-                });
-            r("declist?", { "declist" });
-
-            r("declmode", {});
-            r("declmode", { "default" });
-            r("declmode", { "structbody" });
-
-            r("vardecl", { "idlist", "s?", "arrayqual", "optsemantic", "declmode", ";", "s?" },
-                [](LangTree const& tree) {
-                    IDList ids = std::any_cast<IDList>(tree.children[0].data);
-
-                    try {
-                        StructDeclaration res;
-                        res.declarations = std::any_cast<DeclarationList>(tree.children[4].data);
-                        res.name = ids.back();
-                        res.type = ids.front();
-                        res.semantic = std::any_cast<Semantic>(tree.children[3].data);
-
-                        return AnyDeclaration(res);
-                    }
-                    catch (std::bad_any_cast const&) {
-                        // Not a struct... OK
-                    }
-
-                    try {
-                        VarDeclaration res;
-                        res.name = ids.back();
-                        res.type = ids[ids.size() - 2];
-                        if (ids.size() > 2) {
-                            res.storage = ids[0];
-                        }
-                        res.arrayQual = std::any_cast<ArrayQual>(tree.children[2].data);
-                        res.semantic = std::any_cast<Semantic>(tree.children[3].data);
-
-                        try {
-                            res.defaultValue = std::any_cast<LiteralTree>(tree.children[4].data);
-                            res.hasDefault = true;
-                        }
-                        catch (std::bad_any_cast const&) {
-                            res.hasDefault = false;
-                        }
-
-                        return AnyDeclaration(res);
-                    }
-                    catch (std::bad_any_cast const&) {
-                        // Not a struct or regular declaration... this is actually bad
-                        throw std::runtime_error("Declaration isn't valid");
-                    }
-                });
-
-            r("param", { "idlist" });
-            r("param", { "idlist", "s?", ":", "s?", "id" });
-            r("paramlist", { "s?" });
-            r("paramlist", { "param" });
-            r("paramlist", { "paramlist", "anyop", "s?", "param" });
-
-            r("fdecl", { "idlist", "s?", "lp", "paramlist", "rp", "s?", "scope", "s?" });
-            r("fdecl", { "idlist", "s?", "lp", "paramlist", "rp", "s?", ":", "s?", "id", "s?", "scope", "s?" });
-            r("allfdecl", { "fdecl" });
-
-            r("anyop", { "op" });
-            r("anyop", { "," });
-
-            r("any", { "lp" });
-            r("any", { "rp" });
-            r("any", { "lbr" });
-            r("any", { "rbr" });
-            r("any", { "=" });
-            r("any", { ";" });
-            r("any", { ":" });
-            r("any", { "anyop" });
-            r("any", { "id" });
-            r("any", { "float" });
-            r("any", { "int" });
-            r("any", { "scope" });
-            r("any", { "space" });
-
-            r("anylist", { "any" });
-            r("anylist", { "anylist", "any" });
-
-            r("s?", {});
-            r("s?", { "space" });
-
-            t("space", parsegen::regex::whitespace());
-            t(";", ";");
-            t("=", "=");
-            t(":", ":");
-            t(",", ",");
-            t("id", parsegen::regex::identifier());
-            t("float", parsegen::regex::signed_floating_point());//, [](std:;string const& text) { return std::atof(text); });
-            t("int", parsegen::regex::signed_integer());//, [](std:;string const& text) { return std::atoi(text); });
-            t("op", "[\\.\\*\\/\\|\\+\\-<>&\\?]");
-            t("lb", "\\{");
-            t("rb", "\\}");
-            t("lbr", "\\[");
-            t("rbr", "\\]");
-            t("lp", "\\(");
-            t("rp", "\\)");
-
-            tables = build_parser_tables(lang);
+            tables = build_parser_tables(*this);
         }
     };
 
@@ -351,24 +359,23 @@ namespace ReflectHLSL {
     public:
         HLSL lang;
 
-        Parser()
-            : parsegen::parser(lang.tables)
-            , lang()
-        { }
+        Parser(HLSL l) : parsegen::parser(l.tables), lang(l) { }
         virtual ~Parser() = default;
 
-    protected:
-        virtual std::any shift(int token, std::string& text) override {
-            LangTree res = LangTree{ text, {} };
-            auto it = lang.tokenCallbacks.find(token);
-            if (it != lang.tokenCallbacks.end()) {
-                res.data = it->second(text);
-            }
-            return res;
+    public:
+        inline virtual string denormalize_name(string const& normalized) const override {
+            return lang.denormalize_name(normalized);
         }
-        virtual std::any reduce(int prod, std::vector<std::any>& rhs) override {
-            auto it = lang.rules.find(prod);
-            if (it != lang.rules.end()) return it->second(rhs);
+
+    protected:
+        inline virtual std::any shift(int token, std::string& text) override {
+            auto it = lang.tokenCallbacks.find(token);
+            if (it != lang.tokenCallbacks.end()) return it->second(text);
+            throw std::runtime_error("Internal error, token that should exist wasn't found");
+        }
+        inline virtual std::any reduce(int prod, std::vector<std::any>& rhs) override {
+            auto it = lang.productionCallbacks.find(prod);
+            if (it != lang.productionCallbacks.end()) return it->second(rhs);
             throw std::runtime_error("Internal error, rule that should exist wasn't found");
         }
     };

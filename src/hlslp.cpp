@@ -7,7 +7,7 @@
 
 #include "hlslp.hpp"
 
-#include "Generator.hpp"
+//#include "Generator.hpp"
 
 void writeFile(std::string path, std::string text) {
     std::ofstream file(path);
@@ -76,6 +76,16 @@ std::string removeDefines(std::string input) {
 }
 
 int main(int argc, char** argv) {
+
+    ReflectHLSL::Parser p2 = ReflectHLSL::Parser(ReflectHLSL::HLSL());
+
+    p2.parse_string("1AAA", "input");
+
+    return 0;
+
+
+
+
     std::string input = argc >= 2 ? std::string(argv[1]) : std::string();
 
     if (input.empty()) {
@@ -83,7 +93,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    ReflectHLSL::Parser parser = ReflectHLSL::Parser();
+    ReflectHLSL::Parser parser = ReflectHLSL::Parser(ReflectHLSL::HLSL());
     try {
         std::string s = loadFile(input);
         s = removeDefines(s);

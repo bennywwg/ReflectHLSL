@@ -2,18 +2,14 @@
 
 namespace ReflectHLSL {
    std::string LiteralTree::format() const {
-        if (isValue) {
-            return value;
-        } else {
-            std::string res;
-            res += "{ ";
-            for (size_t i = 0; i < children.size(); ++i) {
-                res += children[i].format();
-                if ((i + 1) != (children.size())) res += ", ";
-            }
-            res += " }";
-            return res;
+        std::string res;
+        res += "{ ";
+        for (size_t i = 0; i < children.size(); ++i) {
+            res += children[i]->format();
+            if ((i + 1) != (children.size())) res += ", ";
         }
+        res += " }";
+        return res;
     }
    
    std::string Semantic::format() const {
@@ -89,16 +85,19 @@ namespace ReflectHLSL {
        return res;
    }
 
-std::string LiteralValue::format() const {
-    if (value.index() == 0) {
-        return std::to_string(std::get<int>(value));
-    } else if (value.index() == 1) {
-        return std::to_string(std::get<uint32_t>(value));
-    } else if (value.index() == 2) {
-        return std::to_string(std::get<float>(value));
-    } else if (value.index() == 3) {
-        return std::get<bool>(value) ? "true" : "false";
-    } else if (value.index() == 4) {
-        return std::get<LiteralTree>(value).format();
-    }
+    std::string LiteralValue::format() const {
+        if (value.index() == 0) {
+            return std::to_string(std::get<int>(value));
+        } else if (value.index() == 1) {
+            return std::to_string(std::get<uint32_t>(value));
+        } else if (value.index() == 2) {
+            return std::to_string(std::get<float>(value));
+        } else if (value.index() == 3) {
+            return std::get<bool>(value) ? "true" : "false";
+        } else if (value.index() == 4) {
+            return std::get<LiteralTree>(value).format();
+        } else {
+            throw std::runtime_error("index was something that didn't exist");
+        }
+    };
 }
