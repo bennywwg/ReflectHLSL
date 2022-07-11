@@ -1,3 +1,5 @@
+# Improving parsegen-cpp Usability
+
 In the context of parsers, programs which scan strings of text and perform actions based on the content of that text, a *Grammar* is defined by a set of production rules. This grammar then defines a *language*.  Grammar Production Rules take the following form:
 
 `T`<sub>`Product`</sub> `|=` `T`<sub>`2`</sub> `T`<sub>`3`</sub> `...`  `T`<sub>`n`</sub>
@@ -130,3 +132,5 @@ MakeProduction([](int firstOperand, int secondOperand) -> bool {
     return firstOperand == secondOperand;
 });
 ```
+
+## This writeup to be continued at a later date...
