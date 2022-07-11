@@ -5,6 +5,7 @@
 #include <variant>
 #include <any>
 #include <memory>
+#include <optional>
 
 namespace ReflectHLSL {
     struct LiteralValue;
@@ -17,57 +18,71 @@ namespace ReflectHLSL {
     };
 
     struct LiteralValue {
-        std::variant<int, uint32_t, float, bool, LiteralTree> value;
+        std::variant<int, float, bool, LiteralTree> value;
         std::string format() const;
     };
 
+    using std::string;
+    using std::vector;
+    using std::optional;
+    using std::variant;
 
-    struct Semantic {
-        std::string semanticName;
-        std::string inParens;
+    // Token
+    struct Space { };
+    struct Semicolon { };
+    struct Equals { };
+    struct Colon { };
+    struct Comma { };
+    struct ID { string Val; };
+    struct Float { string Val; };
+    struct Int { string Val; };
+    struct Op { string Val; };
+    struct LBrace { };
+    struct RBrace { };
+    struct LBrack { };
+    struct RBrack { };
+    struct LParen { };
+    struct RParen { };
 
-        std::string format() const;
-        std::string generateLiteral() const;
+    // Nonterminals
+    using IDList = vector<ID>;
+    using LiteralList = std::vector<std::shared_ptr<LiteralValue>>;
+    struct LiteralListEncapsulation {
+        LiteralList list;
     };
-
+    struct FunctionScope { };
+    struct MaybeSpace { };
+    struct Scope { };
+    struct AnyOp { };
+    struct Any { };
+    struct AnyList { };
+    struct FDecl { };
+    struct Param { };
+    struct ParamList { };
+    struct Default { LiteralValue Val; };
     struct ArrayQual {
-        bool present = false;
-        std::string value;
-
-        std::string format() const;
-        std::string generateLiteral() const;
+        string size;
     };
-
-    struct VarDeclaration {
-        std::string storage;
-        std::string type;
-        std::string templateParam;
-        std::string name;
-        ArrayQual arrayQual;
-        Semantic semantic;
-        bool hasDefault = false;
-        LiteralTree defaultValue;
-
-        std::string format() const;
-        std::string generateLiteral() const;
+    using MaybeArrayQual = optional<ArrayQual>;
+    struct SemanticParens {
+        ID id;
     };
-
-    struct StructDeclaration {
-        std::string type; //cbuffer or struct, presumably
-        std::string name;
-        Semantic semantic;
-        std::vector<std::variant<VarDeclaration, StructDeclaration>> declarations;
-
-        std::string format(int tabs = 0) const;
-        std::string generateLiteral() const;
+    using MaybeSemanticParens = optional<SemanticParens>;
+    struct Semantic {
+        ID id;
+        MaybeSemanticParens parens;
     };
-
-    using AnyDeclaration = std::variant<VarDeclaration, StructDeclaration>;
-    using DeclarationList = std::vector<AnyDeclaration>;
-    using IDList = std::vector<std::string>;
-
-    struct ProgramDeclaration {
-        DeclarationList declarations;
-        std::string format() const;
+    using MaybeSemantic = optional<Semantic>;
+    struct StructBody { };
+    using DeclMode = optional<variant<Default, StructBody>>;
+    struct VarDecl {
+        IDList ids;
+        MaybeArrayQual arrayQual;
+        MaybeSemantic semantic;
+        DeclMode mode;
     };
+    using AnyDecl = optional<VarDecl>; // We only care about vardecls, no data collected for functions
+    using DeclarationList = vector<AnyDecl>;
+    using MaybeDecList = optional<DeclarationList>;
+    struct Program { DeclarationList Declarations; };
 }

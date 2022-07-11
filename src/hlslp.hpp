@@ -6,20 +6,29 @@
 #include <map>
 #include <variant>
 #include <tuple>
+
+#ifdef __unix__
 #include <cxxabi.h>
+#endif
 
 #include <parsegen.hpp>
 
 #include "MetaData.hpp"
 
+#define STRINGIFY(x) #x
+
 namespace ReflectHLSL {
     using namespace std;
     
     std::string demangle(const char* mangled) {
+#ifdef __unix__
         int status;
         std::unique_ptr<char[], void (*)(void*)> result(
             abi::__cxa_demangle(mangled, 0, 0, &status), std::free);
         return result.get() ? std::string(result.get()) : "error occurred";
+#else
+        return mangled;
+#endif
     }
 
     template<class T>
@@ -51,6 +60,7 @@ namespace ReflectHLSL {
             if (norm.find(name) == norm.end()) {
                 ++nextID;
                 norm[name] = ToAlpha(nextID);
+                denormalize_map[norm[name]] = name;
             }
 
             return norm[name];
@@ -139,7 +149,9 @@ namespace ReflectHLSL {
         }
 
         template<typename F>
-        void Rule(F lambda) { AddRule_Internal(function(lambda)); }
+        void RuleF(F lambda) { AddRule_Internal(function(lambda)); }
+
+#define Rule production_names[static_cast<int>(productions.size())] = (__FILE__ + string(":") + std::to_string(__LINE__)), RuleF
 
         template<typename R, typename ...Args>
         void AddToken_Internal(function<R(string&)> const& func, string const& regex) {
@@ -156,208 +168,208 @@ namespace ReflectHLSL {
         void Token(F lambda, string const& regex) { AddToken_Internal(function(lambda), regex); }
 
         template<typename T>
-        void Token(string const& regex) { AddToken_Internal(function([](string&) { return T { }; }), regex); }
-        
-        // Unused
-        /*
-        void MakeTokens() {
-            Token<TPlus>("+");
-            Token<TMinus>("-");
-            Token<TNot>("!");
-            Token<TMul>("*");
-            Token<TDiv>("/");
-            Token<TMod>("%");
-            Rule([](TL, TL) { return TShiftL { }; });
-            Rule([](TG, TG) { return TShiftR { }; });
-            Token<TAssign>("=");
-            Token<TL>("<");
-            Rule([](TL, TAssign) { return TLEQ { }; });
-            Token<TG>(">");
-            Rule([](TG, TAssign) { return TGEQ { }; });
-            Rule([](TAssign, TAssign) { return TEQ { }; });
-            Rule([](TNot, TAssign) { return TNEQ { }; });
-            Token<TBitAND>("&");
-            Token<TBitXOR>("^");
-            Token<TBitOR>("|");
-            Token<TBitNOT>("~");
-            Rule([](TBitAND, TBitAND) { return TAnd { }; });
-            Rule([](TBitOR, TBitOR) { return TOr { }; });
-            Token<TQuestion>("?");
-            Token<TColon>(":");
-            Token<TSemicolon>(";");
-            Token<TComma>(",");
-            Token<TLParen>("(");
-            Token<TLParen>(")");
-            Token<TLBrack>("[");
-            Token<TRBrack>("]");
-            Token<TLBrace>("{");
-            Token<TRBrace>("}");
+        std::enable_if<!std::is_constructible<T, string&>::value, void>::type
+        Token(string const& regex) { AddToken_Internal(function([](string&) { return T { }; }), regex); }
 
-            Token<TSpace>(parsegen::regex::whitespace());
-            Token([](string& text) {
-                return TInt { strtoll(text.data(), nullptr, 10) };
-            }, parsegen::regex::unsigned_integer());
-            Token([](string& text) {
-                return TFloat { strtod(tex.data(), nullptr) };
-            }, parsegen::regex::unsigned_floating_point_not_integer());
-            Token([](string& text) {
-                return TID { text }; 
-            }, parsegen::regex::identifier());
-
-            Rule([]() { return MaybeSpace { };});
-            Rule([](TSpace) { return MaybeSpace { };});
-
-            Rule([](TLParen, TID const& id, TRParen) {
-                return Cast { id.ID };
-            });
-        }*/
+        template<typename T>
+        std::enable_if<std::is_constructible<T, string&>::value, void>::type
+        Token(string const& regex) { AddToken_Internal(function([](string& text) { return T { text }; }), regex); }
 
         void InitRules() {
 
-            // Token
-            struct Space { };
-            struct Semicolon { };
-            struct Equals { };
-            struct Colon { };
-            struct Comma { };
-            struct ID { string Val; };
-            struct Float { string Val; };
-            struct Int { string Val; };
-            struct Op { string Val; };
-            struct LBrace { };
-            struct RBrace { };
-            struct LBrack { };
-            struct RBrack { };
-            struct LParen { };
-            struct RParen { };
+            {
+                Rule([](MaybeSpace, DeclarationList list) -> Program {
+                    return { list };
+                });
 
-            // Nonterminals
-            using Literal = variant<LiteralValue, LiteralTree>;
-            using LiteralList = std::vector<Literal>;
-            struct Program { DeclarationList Declarations; };
-            struct FunctionScope { };
-            struct ArrayLiteral { LiteralList Literals; };
-            struct MaybeSpace { };
-            struct Scope { };
-            struct AnyOp { };
-            struct Any { };
-            struct AnyList { };
-            struct FDecl { };
-            struct Param { };
-            struct ParamList { };
-            struct Default { Literal Val; };
-            struct ArrayQual { };
-            using MaybeArrayQual = optional<ArrayQual>;
-            struct Semantic {
-                ID id;
-            };
-            using MaybeSemantic = optional<Semantic>;
-            struct SemanticParens { 
-                ID id;
-            };
-            using MaybeSemanticParens = optional<SemanticParens>;
-            struct StructBody { };
-            using DeclMode = optional<variant<Default, StructBody>>;
-            struct VarDecl {
-                IDList ids;
-                MaybeArrayQual arrayQual;
-                MaybeSemantic semantic;
-                DeclMode mode;
-            };
+                Rule([](DeclarationList list, AnyDecl decl) -> DeclarationList {
+                    list.push_back(decl);
+                    return list;
+                });
+                Rule([](AnyDecl decl) -> DeclarationList {
+                    return { decl };
+                });
 
-            Rule([]() { return Semantic { ID { "" }}; });
-            Rule([]() { return Semantic { ID { "" }}; });
-
-            Rule([]() { return OptSemanticParens(std::nullopt); });
-            Rule([](LParen, MaybeSpace, ID id, MaybeSpace, RParen, MaybeSpace){ return MaybeSemanticParens { SemanticParens { id } }; });
-
-            Rule([](LBrace, MaybeSpace, MaybeDecList, RBrace, MaybeSpace){ return StructBody { }; });
-
-            Rule([]() { return MaybeDecList(std::nullopt); });
-            Rule([](DeclarationList decList) { return MaybeDecList(decList); });
-
-            Rule([](){ return DeclMode(std::nullopt); });
-            Rule([](Default def){ return DeclMode(def); });
-            Rule([](StructBody){ return DeclMode(StructBody {}); });
-
-            Rule([](
-                IDList ids,
-                MaybeSpace,
-                MaybeArrayQual arr,
-                MaybeSemantic sem,
-                DeclMode mode,
-                Semicolon,
-                MaybeSpace
-            ) {
-                return VarDecl { ids, arr, sem, mode };
-            });
-
-            Rule([](IDList) { return Param { };});
-            Rule([](IDList, MaybeSpace, Colon, MaybeSpace, ID) { return Param { };});
-            Rule([](MaybeSpace) { return ParamList { };});
-            Rule([](Param) { return ParamList { };});
-            Rule([](ParamList, AnyOp, MaybeSpace, Param) { return ParamList { };});
-
-            Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace){return FDecl { }; });
-            Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace){return FDecl { }; });
-
-            Rule([](Op) { return AnyOp { };});
-            Rule([](Comma) { return AnyOp { };});
-
-            Rule([](LParen) { return Any { };});
-            Rule([](RParen) { return Any { };});
-            Rule([](LBrack) { return Any { };});
-            Rule([](RBrack) { return Any { };});
-            Rule([](Equals) { return Any { };});
-            Rule([](Semicolon) { return Any { };});
-            Rule([](Colon) { return Any { };});
-            Rule([](AnyOp) { return Any { };});
-            Rule([](ID) { return Any { };});
-            Rule([](Float) { return Any { };});
-            Rule([](Int) { return Any { };});
-            Rule([](Scope) { return Any { };});
-            Rule([](Space) { return Any { };});
-
-            Rule([](Any) { return AnyList { };});
-            Rule([](AnyList, Any) { return AnyList { };});
-
-            Rule([](){ return MaybeSpace { };});
-            Rule([](Space){ return MaybeSpace { };});
-
-            Token<Space>(parsegen::regex::whitespace());
-            Token<Semicolon>(";");
-            Token<Equals>("=");
-            Token<Colon>(":");
-            Token<Comma>(",");
-            Token<ID>(parsegen::regex::identifier());
-            Token<Float>(parsegen::regex::signed_floating_point());
-            Token<Int>(parsegen::regex::signed_integer());
-            Token<Op>("[\\.\\*\\/\\|\\+\\-<>&\\?]");
-            Token<LBrace>("\\{");
-            Token<RBrace>("\\}");
-            Token<LBrack>("\\[");
-            Token<RBrack>("\\]");
-            Token<LParen>("\\(");
-            Token<RParen>("\\)");
-        }
-
-        inline virtual string denormalize_name(string const& normalized) const override {
-            for (auto it : norm) {
-                if (it.second == normalized) return it.first;
+                Rule([](FDecl) -> AnyDecl { return std::nullopt; });
+                Rule([](VarDecl decl) -> AnyDecl { return decl; });
             }
-            throw std::runtime_error("Couldn't denormalize name");
+
+            // Creating Literals, output is LiteralValue
+            {
+                Rule([](LiteralValue val) -> LiteralList {
+                    return { make_shared<LiteralValue>(val) };
+                });
+                Rule([](LiteralList list, MaybeSpace, Comma, MaybeSpace, LiteralValue val) -> LiteralList {
+                    list.push_back(make_shared<LiteralValue>(val));
+                    return list;
+                });
+
+                Rule([](LBrace, MaybeSpace, LiteralList list, MaybeSpace, RBrace) -> LiteralListEncapsulation {
+                    return { list };
+                });
+
+                Rule([](Int val) -> LiteralValue {
+                    return { std::stoi(val.Val) };
+                });
+                Rule([](Float val) -> LiteralValue {
+                    return { std::stof(val.Val) };
+                });
+                Rule([](ID val) -> LiteralValue {
+                    if (val.Val == "true") return LiteralValue{ true };
+                    if (val.Val == "false")  return LiteralValue{ false };
+                    throw std::runtime_error("Expected true or false in literal, but got an arbitrary string");
+                });
+                Rule([](LiteralListEncapsulation val) -> LiteralValue {
+                    return { LiteralTree { val.list } };
+                });
+            }
+
+            // Variable and Struct declaration
+            {
+                // Variables
+                {
+                    // Example:      vvv
+                    //          int a[4] : register(b0) = { 0 };
+                    Rule([]() -> MaybeArrayQual { return std::nullopt; });
+                    Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, RBrack, MaybeSpace) -> MaybeArrayQual { return ArrayQual{ id.Val }; });
+                    Rule([](LBrack, MaybeSpace, Int val, MaybeSpace, RBrack, MaybeSpace) -> MaybeArrayQual { return ArrayQual{ val.Val }; });
+
+                    // Example:          vvvvvvvvvvvvvv
+                    //          int a[4] : register(b0) = { 0 };
+                    Rule([]() -> MaybeSemantic { return std::nullopt; });
+                    Rule([](Colon, MaybeSpace, ID id, MaybeSpace, MaybeSemanticParens parens) -> MaybeSemantic {
+                        return Semantic{ id, parens };
+                    });
+
+                    // Example:                    vvvv
+                    //          int a[4] : register(b0) = { 0 };
+                    Rule([]() { return MaybeSemanticParens(std::nullopt); });
+                    Rule([](LParen, MaybeSpace, ID id, MaybeSpace, RParen, MaybeSpace) { return MaybeSemanticParens{ { id } }; });
+
+                    // Example:                         vvvvvvv
+                    //          int a[4] : register(b0) = { 0 };
+                    Rule([](Equals, MaybeSpace, LiteralValue val, MaybeSpace) -> Default { return { val }; });
+                }
+
+                // Structs
+                {
+                    // Example:          vvvvvvvvvv
+                    //          struct B { int x; };
+                    Rule([](LBrace, MaybeSpace, MaybeDecList, RBrace, MaybeSpace) -> StructBody { return { }; });
+
+                    // Example:            vvvvvv
+                    //          struct B { int x; };
+                    Rule([]() { return MaybeDecList(std::nullopt); });
+                    Rule([](DeclarationList decList) { return MaybeDecList(decList); });
+                }
+
+                // Determine whether the declaration is a variable or a struct
+                Rule([]() { return DeclMode(std::nullopt); });
+                Rule([](Default def) { return DeclMode(def); });
+                Rule([](StructBody) { return DeclMode(StructBody{}); });
+                Rule([](
+                    IDList ids,
+                    MaybeSpace,
+                    MaybeArrayQual arr,
+                    MaybeSemantic sem,
+                    DeclMode mode,
+                    Semicolon,
+                    MaybeSpace
+                ) {
+                        return VarDecl{ ids, arr, sem, mode };
+                });
+            }
+
+            // Various odds and ends
+            {
+                Rule([](ID id) -> IDList { return { id }; });
+                Rule([](IDList list, MaybeSpace, ID id) -> IDList {
+                    list.push_back(id);
+                    return list;
+                });
+
+                Rule([](IDList) { return Param{ }; });
+                Rule([](IDList, MaybeSpace, Colon, MaybeSpace, ID) { return Param{ }; });
+                Rule([](MaybeSpace) { return ParamList{ }; });
+                Rule([](Param) { return ParamList{ }; });
+                Rule([](ParamList, AnyOp, MaybeSpace, Param) { return ParamList{ }; });
+
+                Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace) { return FDecl{ }; });
+                Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace) { return FDecl{ }; });
+
+                Rule([](Op) { return AnyOp{ }; });
+                Rule([](Comma) { return AnyOp{ }; });
+
+                Rule([]() { return MaybeSpace{ }; });
+                Rule([](Space) { return MaybeSpace{ }; });
+
+                // Any and AnyList
+                {
+                    Rule([](LBrace, RBrace) -> Scope { return { }; });
+                    Rule([](LBrace, AnyList, RBrace) -> Scope { return { }; });
+
+                    Rule([](LParen) { return Any{ }; });
+                    Rule([](RParen) { return Any{ }; });
+                    Rule([](LBrack) { return Any{ }; });
+                    Rule([](RBrack) { return Any{ }; });
+                    Rule([](Equals) { return Any{ }; });
+                    Rule([](Semicolon) { return Any{ }; });
+                    Rule([](Colon) { return Any{ }; });
+                    Rule([](AnyOp) { return Any{ }; });
+                    Rule([](ID) { return Any{ }; });
+                    Rule([](Float) { return Any{ }; });
+                    Rule([](Int) { return Any{ }; });
+                    Rule([](Scope) { return Any{ }; });
+                    Rule([](Space) { return Any{ }; });
+
+                    Rule([](Any) { return AnyList{ }; });
+                    Rule([](AnyList, Any) { return AnyList{ }; });
+                }
+            }
+
+            // Tokens
+            {
+                Token<Space>(parsegen::regex::whitespace());
+                Token<Semicolon>(";");
+                Token<Equals>("=");
+                Token<Colon>(":");
+                Token<Comma>(",");
+                Token<ID>(parsegen::regex::identifier());
+                Token<Float>(parsegen::regex::signed_floating_point());
+                Token<Int>(parsegen::regex::signed_integer());
+                Token<Op>("[\\.\\*\\/\\|\\+\\-<>&\\?]");
+                Token<LBrace>("\\{");
+                Token<RBrace>("\\}");
+                Token<LBrack>("\\[");
+                Token<RBrack>("\\]");
+                Token<LParen>("\\(");
+                Token<RParen>("\\)");
+            }
         }
 
         HLSL() {
             InitRules();
 
-            tables = build_parser_tables(*this);
+            try {
+                tables = build_parser_tables(*this);
+            } catch (parsegen::parse_error const& er) {
+                throw std::runtime_error(er.what());
+            }
         }
     };
 
     class Parser : public parsegen::parser {
     public:
         HLSL lang;
+
+        Program GetProgram(string const& text) {
+            auto res = parse_string(text, "input");
+            try {
+                return std::any_cast<Program>(res);
+            } catch (std::bad_any_cast const& ex) {
+                throw std::runtime_error("parse_string completed but the return type was incorrect");
+            }
+        }
 
         Parser(HLSL l) : parsegen::parser(l.tables), lang(l) { }
         virtual ~Parser() = default;

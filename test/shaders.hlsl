@@ -17,7 +17,7 @@ SamplerState sampleWrap : register(s0);
 SamplerState sampleClamp : register(s1);
 
 int val = 5;
-bruh d = { { 4, 5, 6 } , abc , { 4, 5, 6 } } ;
+bruh d = { { 4, 5, 6 } , 4 , { 4, 5, 6 } } ;
 
 #define NUM_LIGHTS 3
 #define SHADOW_DEPTH_BIAS 0.00005f

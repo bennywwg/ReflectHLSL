@@ -76,17 +76,9 @@ std::string removeDefines(std::string input) {
 }
 
 int main(int argc, char** argv) {
-
-    ReflectHLSL::Parser p2 = ReflectHLSL::Parser(ReflectHLSL::HLSL());
-
-    p2.parse_string("1AAA", "input");
-
-    return 0;
-
-
-
-
     std::string input = argc >= 2 ? std::string(argv[1]) : std::string();
+    
+    input = R"(C:\Users\benny\Build\ReflectHLSL\test\shaders.hlsl)";
 
     if (input.empty()) {
         std::cerr << "No filename given" << std::endl;
@@ -98,9 +90,9 @@ int main(int argc, char** argv) {
         std::string s = loadFile(input);
         s = removeDefines(s);
         s = removeComments(s);
-        parser.parse_string(s, "input");
-    }
-    catch (std::exception const& ex) {
+        ReflectHLSL::Program p = parser.GetProgram(s);
+        std::cout << p.Declarations.size() << "\n";
+    } catch (std::exception const& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;
     }
