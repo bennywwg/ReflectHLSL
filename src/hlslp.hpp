@@ -168,11 +168,11 @@ namespace ReflectHLSL {
         void Token(F lambda, string const& regex) { AddToken_Internal(function(lambda), regex); }
 
         template<typename T>
-        std::enable_if<!std::is_constructible<T, string&>::value, void>::type
+        typename std::enable_if<!std::is_constructible<T, string&>::value, void>::type
         Token(string const& regex) { AddToken_Internal(function([](string&) { return T { }; }), regex); }
 
         template<typename T>
-        std::enable_if<std::is_constructible<T, string&>::value, void>::type
+        typename std::enable_if<std::is_constructible<T, string&>::value, void>::type
         Token(string const& regex) { AddToken_Internal(function([](string& text) { return T { text }; }), regex); }
 
         void InitRules() {
