@@ -5,15 +5,11 @@
 #include <glm/glm.hpp>
 
 namespace ReflectHLSL {
-	struct Generator {
-
-	};
-
 	template<
 		typename VectorConfig,
 		typename BufferConfig
 	>
-	struct TestProgram {
+	struct Generator {
 		using vec2	= VectorConfig::template Vector<2,    float>::Type;
 		using vec3	= VectorConfig::template Vector<3,    float>::Type;
 		using vec4	= VectorConfig::template Vector<4,    float>::Type;
@@ -31,30 +27,34 @@ namespace ReflectHLSL {
 		template<typename T>
 		using StructuredBuffer = BufferConfig::template Buffer<T>::Type;
 
-		// Begin Generated Section
-		
-		constexpr static ProgramDeclaration Program = {
-			StructDeclaration { "struct", "BlahType", { "", "" }, {
-				VarDeclaration { "", "vec4", "", "abc",		{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
-				VarDeclaration { "", "vec2", "", "uv",		{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
-				VarDeclaration { "", "float", "", "field",	{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
-				VarDeclaration { "", "int", "", "val",		{ false, "" }, { "", "" }, false, { true, "0",   { }}}
-			} },
-			VarDeclaration { "", "StructuredBuffer", "", "MyBlahs", { false, "" }, { "", "" }, false, { true, "0.0", { }}}
-		};
-		
-		constexpr static uint8_t Bytecode[3427] = { 0 };
-		
-		struct BlahType {
-			vec4 abc;
-			vec2 uv;
-			float field;
-			int val;
-		};
-		
-		StructuredBuffer<BlahType> MyBlahs;
+		struct TestProgram {
+			// Begin Generated Section
+			
+			constexpr static ProgramDeclaration Program = {
+				StructDeclaration { "struct", "BlahType", { "", "" }, {
+					VarDeclaration { "", "vec4", "", "abc",		{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
+					VarDeclaration { "", "vec2", "", "uv",		{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
+					VarDeclaration { "", "float", "", "field",	{ false, "" }, { "", "" }, false, { true, "0.0", { }}},
+					VarDeclaration { "", "int", "", "val",		{ false, "" }, { "", "" }, false, { true, "0",   { }}}
+				} },
+				VarDeclaration { "", "StructuredBuffer", "", "MyBlahs", { false, "" }, { "", "" }, false, { true, "0.0", { }}}
+			};
+			
+			constexpr static uint8_t Bytecode[3427] = { 0 };
+			
+			struct BlahType {
+				vec4 abc;
+				vec2 uv;
+				float field;
+				int val;
+			};
 
-		// End Generated Section
+			struct Dispatch {
+				StructuredBuffer<BlahType> MyBlahs;
+			};
+
+			// End Generated Section
+		};
 	};
 
 	struct GLMVectorConfig {

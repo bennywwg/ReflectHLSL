@@ -66,26 +66,6 @@ namespace ReflectHLSL {
             return norm[name];
         }
 
-        template<size_t I, typename Tuple>
-        auto any_get(vector<any>& anys) {
-            return std::any_cast<decltype(std::get<I>(Tuple()))>(anys[I]);
-        }
-
-        template<typename Function, typename Tuple, size_t ... I>
-        auto call3(Function f, Tuple*, vector<any>& anys, std::index_sequence<I ...>) {
-            return f(any_get<I, Tuple>(anys) ...);
-        }
-
-        template<typename Function, typename Tuple, typename ...Args>
-        auto call2(Function f, vector<any>& anys) {
-            return call3(
-                f,
-                (Tuple*)(nullptr),
-                anys,
-                std::make_index_sequence<sizeof...(Args)>{}
-            );
-        }
-
         template<typename Function, typename Tuple, size_t ... I>
         auto call(Function f, Tuple t, std::index_sequence<I ...>) {
             return f(std::get<I>(t) ...);
@@ -142,7 +122,6 @@ namespace ReflectHLSL {
                 tuple<Args...> args;
                 PackAnys<sizeof...(Args), Args...>(args, anys);
                 return call(func, args);
-                //return call2<function<R(Args...)> const&, tuple<Args...>, Args...>(func, anys);
             };
 
             productions.push_back({ lhs, rhs });
