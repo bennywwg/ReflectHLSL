@@ -18,6 +18,7 @@
 namespace ReflectHLSL {
     
     class HLSL : public parsegen::frontend {
+    protected:
         virtual void InitRules() override {
             {
                 Rule([](MaybeSpace, DeclarationList list) -> Program {
@@ -188,5 +189,8 @@ namespace ReflectHLSL {
                 Token<RParen>("\\)");
             }
         }
+    
+    public:
+        HLSL() = default;
     };
 }

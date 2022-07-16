@@ -62,8 +62,7 @@ std::string removeDefines(std::string input) {
     for (size_t i = 0; i < input.size(); ++i) {
         if (check(i, '#')) {
             inMacroLine = true;
-        }
-        else if (check(i, '\n')) {
+        } else if (check(i, '\n')) {
             inMacroLine = false;
         }
 
@@ -85,12 +84,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    ReflectHLSL::Parser parser = ReflectHLSL::Parser(ReflectHLSL::HLSL());
+    parsegen::Parser<ReflectHLSL::Program, ReflectHLSL::HLSL> parse;
     try {
         std::string s = loadFile(input);
         s = removeDefines(s);
         s = removeComments(s);
-        ReflectHLSL::Program p = parser.GetProgram(s);
+        ReflectHLSL::Program p = parse.Parse(s);
         std::cout << p.Declarations.size() << "\n";
     } catch (std::exception const& ex) {
         std::cerr << ex.what() << std::endl;
