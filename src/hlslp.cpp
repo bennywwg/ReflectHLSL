@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    parsegen::Parser<ReflectHLSL::Program, ReflectHLSL::HLSL> parse;
+    parsegen::Parser<ReflectHLSL::HLSL> parse;
     try {
         std::string s = loadFile(input);
         s = removeDefines(s);

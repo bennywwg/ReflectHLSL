@@ -18,7 +18,9 @@
 namespace ReflectHLSL {
     
     class HLSL : public parsegen::frontend {
-    protected:
+    public:
+        using ReturnType = Program;
+
         virtual void InitRules() override {
             {
                 Rule([](MaybeSpace, DeclarationList list) -> Program {
@@ -190,7 +192,6 @@ namespace ReflectHLSL {
             }
         }
     
-    public:
         HLSL() = default;
     };
 }
