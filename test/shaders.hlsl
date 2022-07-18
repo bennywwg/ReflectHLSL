@@ -21,6 +21,8 @@ bruh d = { { 4, 5, 6 } , 4 , { 4, 5, 6 } } ;
 
 #define NUM_LIGHTS 3
 #define SHADOW_DEPTH_BIAS 0.00005f
+#define SHADOW_DEPTH_BIAS \
+            54580
 
 struct Blah { } ;
 
@@ -59,6 +61,7 @@ struct PSInput
 //--------------------------------------------------------------------------------------
 // Sample normal map, convert to signed, apply tangent-to-world space transform.
 //--------------------------------------------------------------------------------------
+[numthreads(1, 1, 1)]
 float3 CalcPerPixelNormal(float2 vTexcoord, float3 vVertNormal, float3 vVertTangent)
 {
     // Compute tangent frame.
@@ -78,6 +81,7 @@ float3 CalcPerPixelNormal(float2 vTexcoord, float3 vVertNormal, float3 vVertTang
 //--------------------------------------------------------------------------------------
 // Diffuse lighting calculation, with angle and distance falloff.
 //--------------------------------------------------------------------------------------
+[numthreads(1, 1, 1)]
 float4 CalcLightingColor(float3 vLightPos, float3 vLightDir, float4 vLightColor, float4 vFalloffs, float3 vPosWorld, float3 vPerPixelNormal)
 {
     float3 vLightToPixelUnNormalized = vPosWorld - vLightPos;
@@ -103,6 +107,7 @@ float4 CalcLightingColor(float3 vLightPos, float3 vLightDir, float4 vLightColor,
 //--------------------------------------------------------------------------------------
 // Test how much pixel is in shadow, using 2x2 percentage-closer filtering.
 //--------------------------------------------------------------------------------------
+[numthreads(1, 1, 1)]
 float4 CalcUnshadowedAmountPCF2x2(int lightIndex, float4 vPosWorld)
 {
     // Compute pixel position in light space.
@@ -139,6 +144,7 @@ float4 CalcUnshadowedAmountPCF2x2(int lightIndex, float4 vPosWorld)
     return dot(vBilinearWeights, vShadowTests);
 }
 
+[numthreads(1, 1, 1)]
 PSInput VSMain(float3 position : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD0, float3 tangent : TANGENT)
 {
     PSInput result;
@@ -161,6 +167,7 @@ PSInput VSMain(float3 position : POSITION, float3 normal : NORMAL, float2 uv : T
     return result;
 }
 
+[numthreads(1, 1, 1)]
 float4 PSMain(PSInput input) : SV_TARGET
 {
     float4 diffuseColor = diffuseMap.Sample(sampleWrap, input.uv);

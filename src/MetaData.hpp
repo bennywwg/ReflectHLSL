@@ -7,6 +7,8 @@
 #include <memory>
 #include <optional>
 
+#include "Generator.hpp"
+
 namespace ReflectHLSL {
     struct LiteralValue;
 
@@ -18,14 +20,9 @@ namespace ReflectHLSL {
     };
 
     struct LiteralValue {
-        std::variant<int, float, bool, LiteralTree> value;
+        std::variant<std::string, LiteralTree> value;
         std::string format() const;
     };
-
-    using std::string;
-    using std::vector;
-    using std::optional;
-    using std::variant;
 
     // Token
     struct Space { };
@@ -33,56 +30,83 @@ namespace ReflectHLSL {
     struct Equals { };
     struct Colon { };
     struct Comma { };
-    struct ID { string Val; };
-    struct Float { string Val; };
-    struct Int { string Val; };
-    struct Op { string Val; };
+    struct ID { std::string Val; };
+    struct Float { std::string Val; };
+    struct Int { std::string Val; };
+    struct Op { std::string Val; };
     struct LBrace { };
     struct RBrace { };
     struct LBrack { };
     struct RBrack { };
     struct LParen { };
     struct RParen { };
+    struct Less { };
+    struct Great { };
 
     // Nonterminals
-    using IDList = vector<ID>;
     using LiteralList = std::vector<std::shared_ptr<LiteralValue>>;
     struct LiteralListEncapsulation {
         LiteralList list;
     };
-    struct FunctionScope { };
+    struct TemplateID {
+        ID id;
+        LiteralList inTemplate;
+    };
+    using IDList = std::vector<TemplateID>;
     struct MaybeSpace { };
     struct Scope { };
     struct AnyOp { };
     struct Any { };
     struct AnyList { };
-    struct FDecl { };
+    struct FunctionAttrib {
+        ID id;
+        LiteralList literals;
+    };
+    struct FDecl {
+        ID name;
+    };
     struct Param { };
     struct ParamList { };
     struct Default { LiteralValue Val; };
-    struct ArrayQual {
-        string size;
+    struct ArrayQual2 {
+        std::string Size;
     };
-    using MaybeArrayQual = optional<ArrayQual>;
+    struct ArrayQuals {
+        std::vector<std::string> Sizes;
+    };
+    using MaybeArrayQual = std::optional<ArrayQuals>;
     struct SemanticParens {
         ID id;
     };
-    using MaybeSemanticParens = optional<SemanticParens>;
+    using MaybeSemanticParens = std::optional<SemanticParens>;
     struct Semantic {
         ID id;
         MaybeSemanticParens parens;
+
+        std::string GetGeneration();
     };
-    using MaybeSemantic = optional<Semantic>;
-    struct StructBody { };
-    using DeclMode = optional<variant<Default, StructBody>>;
+    using MaybeSemantic = std::optional<Semantic>;
+    struct MaybeDecList;
+    struct StructBody {
+        std::shared_ptr<MaybeDecList> Val;
+    };
+    using DeclMode = std::optional<std::variant<Default, StructBody>>;
     struct VarDecl {
         IDList ids;
         MaybeArrayQual arrayQual;
         MaybeSemantic semantic;
         DeclMode mode;
+
+        void GetGeneration(GenerationContext& ctx, int tabs);
     };
-    using AnyDecl = optional<VarDecl>; // We only care about vardecls, no data collected for functions
-    using DeclarationList = vector<AnyDecl>;
-    using MaybeDecList = optional<DeclarationList>;
-    struct Program { DeclarationList Declarations; };
+    using AnyDecl = std::variant<VarDecl, FDecl, FunctionAttrib>;
+    struct DeclarationList {
+        std::vector<AnyDecl> Val;
+    };
+    struct MaybeDecList {
+        std::optional<DeclarationList> Val;
+    };
+    struct Program {
+        DeclarationList Val;
+    };
 }

@@ -7,16 +7,11 @@
 #include <variant>
 #include <tuple>
 
-#ifdef __unix__
-#include <cxxabi.h>
-#endif
-
 #include <frontend.hpp>
 
 #include "MetaData.hpp"
 
 namespace ReflectHLSL {
-    
     class HLSL : public parsegen::frontend {
     public:
         using ReturnType = Program;
@@ -27,15 +22,16 @@ namespace ReflectHLSL {
                     return { list };
                 });
 
+                Rule([](AnyDecl decl) -> DeclarationList {
+                    return { { decl } };
+                });
                 Rule([](DeclarationList list, AnyDecl decl) -> DeclarationList {
-                    list.push_back(decl);
+                    list.Val.push_back(decl);
                     return list;
                 });
-                Rule([](AnyDecl decl) -> DeclarationList {
-                    return { decl };
-                });
 
-                Rule([](FDecl) -> AnyDecl { return std::nullopt; });
+                Rule([](FunctionAttrib attrib) -> AnyDecl { return attrib; });
+                Rule([](FDecl decl) -> AnyDecl { return decl; });
                 Rule([](VarDecl decl) -> AnyDecl { return decl; });
             }
 
@@ -54,15 +50,13 @@ namespace ReflectHLSL {
                 });
 
                 Rule([](Int val) -> LiteralValue {
-                    return { std::stoi(val.Val) };
+                    return { val.Val };
                 });
                 Rule([](Float val) -> LiteralValue {
-                    return { std::stof(val.Val) };
+                    return { val.Val };
                 });
                 Rule([](ID val) -> LiteralValue {
-                    if (val.Val == "true") return LiteralValue{ true };
-                    if (val.Val == "false")  return LiteralValue{ false };
-                    throw std::runtime_error("Expected true or false in literal, but got an arbitrary string");
+                    return { val.Val };
                 });
                 Rule([](LiteralListEncapsulation val) -> LiteralValue {
                     return { LiteralTree { val.list } };
@@ -76,8 +70,14 @@ namespace ReflectHLSL {
                     // Example:      vvv
                     //          int a[4] : register(b0) = { 0 };
                     Rule([]() -> MaybeArrayQual { return std::nullopt; });
-                    Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, RBrack, MaybeSpace) -> MaybeArrayQual { return ArrayQual{ id.Val }; });
-                    Rule([](LBrack, MaybeSpace, Int val, MaybeSpace, RBrack, MaybeSpace) -> MaybeArrayQual { return ArrayQual{ val.Val }; });
+                    Rule([](ArrayQuals Quals) -> MaybeArrayQual { return Quals; });
+                    Rule([](ArrayQual2 Qual) -> ArrayQuals { return { { Qual.Size } }; });
+                    Rule([](ArrayQuals Quals, ArrayQual2 Qual) -> ArrayQuals {
+                        Quals.Sizes.push_back(Qual.Size);
+                        return Quals;
+                    });
+                    Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual2 { return { id.Val }; });
+                    Rule([](LBrack, MaybeSpace, Int val, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual2 { return { val.Val }; });
 
                     // Example:          vvvvvvvvvvvvvv
                     //          int a[4] : register(b0) = { 0 };
@@ -100,7 +100,9 @@ namespace ReflectHLSL {
                 {
                     // Example:          vvvvvvvvvv
                     //          struct B { int x; };
-                    Rule([](LBrace, MaybeSpace, MaybeDecList, RBrace, MaybeSpace) -> StructBody { return { }; });
+                    Rule([](LBrace, MaybeSpace, MaybeDecList decList, RBrace, MaybeSpace) -> StructBody {
+                        return { std::make_shared<MaybeDecList>(decList) };
+                    });
 
                     // Example:            vvvvvv
                     //          struct B { int x; };
@@ -110,8 +112,8 @@ namespace ReflectHLSL {
 
                 // Determine whether the declaration is a variable or a struct
                 Rule([]() { return DeclMode(std::nullopt); });
-                Rule([](Default def) { return DeclMode(def); });
-                Rule([](StructBody) { return DeclMode(StructBody{}); });
+                Rule([](Default def) -> DeclMode { return def; });
+                Rule([](StructBody body) -> DeclMode { return body; });
                 Rule([](
                     IDList ids,
                     MaybeSpace,
@@ -127,8 +129,14 @@ namespace ReflectHLSL {
 
             // Various odds and ends
             {
-                Rule([](ID id) -> IDList { return { id }; });
-                Rule([](IDList list, MaybeSpace, ID id) -> IDList {
+                Rule([](ID id) -> TemplateID { return { id, { } }; });
+                Rule([](ID id, Less, ID templateId, Great) -> TemplateID {
+                    auto lit = std::make_shared<LiteralValue>(templateId.Val);
+                    return { id, { lit } };
+                });
+
+                Rule([](TemplateID id) -> IDList { return { id }; });
+                Rule([](IDList list, MaybeSpace, TemplateID id) -> IDList {
                     list.push_back(id);
                     return list;
                 });
@@ -137,13 +145,19 @@ namespace ReflectHLSL {
                 Rule([](IDList, MaybeSpace, Colon, MaybeSpace, ID) { return Param{ }; });
                 Rule([](MaybeSpace) { return ParamList{ }; });
                 Rule([](Param) { return ParamList{ }; });
-                Rule([](ParamList, AnyOp, MaybeSpace, Param) { return ParamList{ }; });
+                Rule([](ParamList, Comma, MaybeSpace, Param) { return ParamList{ }; });
 
-                Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace) { return FDecl{ }; });
-                Rule([](IDList, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace) { return FDecl{ }; });
+                Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, LParen, MaybeSpace, LiteralList literals, RParen, MaybeSpace, RBrack, MaybeSpace) -> FunctionAttrib {
+                    return { id, literals };
+                });
+
+                Rule([](IDList ids, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace) { return FDecl{ ids[1].id }; });
+                Rule([](IDList ids, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace) { return FDecl{ ids[1].id }; });
 
                 Rule([](Op) { return AnyOp{ }; });
                 Rule([](Comma) { return AnyOp{ }; });
+                Rule([](Less) { return AnyOp{ }; });
+                Rule([](Great) { return AnyOp{ }; });
 
                 Rule([]() { return MaybeSpace{ }; });
                 Rule([](Space) { return MaybeSpace{ }; });
@@ -182,13 +196,15 @@ namespace ReflectHLSL {
                 Token<ID>(parsegen::regex::identifier());
                 Token<Float>(parsegen::regex::signed_floating_point());
                 Token<Int>(parsegen::regex::signed_integer());
-                Token<Op>("[\\.\\*\\/\\|\\+\\-<>&\\?]");
+                Token<Op>("[\\.\\*\\/\\|\\+\\-&\\?]");
                 Token<LBrace>("\\{");
                 Token<RBrace>("\\}");
                 Token<LBrack>("\\[");
                 Token<RBrack>("\\]");
                 Token<LParen>("\\(");
                 Token<RParen>("\\)");
+                Token<Less>("<");
+                Token<Great>(">");
             }
         }
     

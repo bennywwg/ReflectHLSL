@@ -7,12 +7,12 @@ execute_process (COMMAND git submodule update --init --recursive)
 add_subdirectory (parsegen)
 
 add_executable (ReflectHLSL
-	src/hlslp.cpp
-	src/hlslp.hpp
+	src/HLSL.cpp
+	src/HLSL.hpp
 	src/MetaData.cpp
 	src/MetaData.hpp
 	src/Generator.hpp
-)
+	src/Generator.cpp)
 
 target_include_directories (ReflectHLSL PRIVATE parsegen/src)
 target_include_directories (ReflectHLSL PRIVATE glm)
