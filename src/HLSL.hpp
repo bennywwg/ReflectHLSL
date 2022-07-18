@@ -101,13 +101,14 @@ namespace ReflectHLSL {
                     // Example:          vvvvvvvvvv
                     //          struct B { int x; };
                     Rule([](LBrace, MaybeSpace, MaybeDecList decList, RBrace, MaybeSpace) -> StructBody {
+                        
                         return { std::make_shared<MaybeDecList>(decList) };
                     });
 
                     // Example:            vvvvvv
                     //          struct B { int x; };
-                    Rule([]() { return MaybeDecList(std::nullopt); });
-                    Rule([](DeclarationList decList) { return MaybeDecList(decList); });
+                    Rule([]() -> MaybeDecList { return { std::nullopt }; });
+                    Rule([](DeclarationList decList) -> MaybeDecList { return { decList }; });
                 }
 
                 // Determine whether the declaration is a variable or a struct
@@ -123,15 +124,17 @@ namespace ReflectHLSL {
                     Semicolon,
                     MaybeSpace
                 ) {
-                        return VarDecl{ ids, arr, sem, mode };
+                    return VarDecl{ ids, arr, sem, mode };
                 });
             }
 
             // Various odds and ends
             {
-                Rule([](ID id) -> TemplateID { return { id, { } }; });
+                Rule([](ID id) -> TemplateID {
+                    return { id, { } };
+                });
                 Rule([](ID id, Less, ID templateId, Great) -> TemplateID {
-                    auto lit = std::make_shared<LiteralValue>(templateId.Val);
+                    auto lit = std::make_shared<LiteralValue>(LiteralValue { templateId.Val });
                     return { id, { lit } };
                 });
 

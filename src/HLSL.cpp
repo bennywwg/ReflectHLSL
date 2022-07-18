@@ -73,7 +73,7 @@ std::string removeDefines(ReflectHLSL::DefinesContext& ctx, std::string input) {
 int main(int argc, char** argv) {
     std::string input = argc >= 2 ? std::string(argv[1]) : std::string();
     
-    input = R"(C:\Users\benny\Build\ReflectHLSL\test\shaders2.hlsl)";
+    input = R"(./test/shaders2.hlsl)";
 
     if (input.empty()) {
         std::cerr << "No filename given" << std::endl;
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        writeFile(R"(C:\Users\benny\Build\ReflectHLSL\test\Out.inl)", ReflectHLSL::Generate(ctx, dctx));
+        writeFile(R"(./test/Out2.inl)", ReflectHLSL::Generate(ctx, dctx));
     } catch (parsegen::parse_error const& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;
