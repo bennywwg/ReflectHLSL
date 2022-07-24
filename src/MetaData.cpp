@@ -69,9 +69,9 @@ namespace ReflectHLSL {
                 semanticComment = " // : " + semantic->GetGeneration();
 
                 if (IsStruct) {
-                    ctx.CBufferRegisterMap[Identifier] = semantic->parens->id.Val;
+                    //ctx.CBufferRegisterMap[Identifier] = semantic->parens->id.Val;
                 } else if (semantic->parens.has_value()) {
-                    ctx.VarRegisterMap[Identifier] = semantic->parens->id.Val;
+                    //ctx.VarRegisterMap[Identifier] = semantic->parens->id.Val;
                 }
             }
         }
@@ -107,7 +107,7 @@ namespace ReflectHLSL {
     }
 
     inline std::string Semantic::GetGeneration() {
-        return id.Val + (parens.has_value() ? ("(" + parens->id.Val + ")") : std::string());
+        return id.Val;// + (parens.has_value() ? ("(" + parens->id.Val + ")") : std::string());
     }
 
     /*

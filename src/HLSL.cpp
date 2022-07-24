@@ -94,16 +94,23 @@ int main(int argc, char** argv) {
        
 
         std::string currentInvokeSize;
+        std::vector<ReflectHLSL::VarDecl> structuredVariables;
 
         for (auto d : p.Val.Val) {
-
             if (d.index() == 0) {
-                std::get<ReflectHLSL::VarDecl>(d).GetGeneration(ctx, 2);
+                ReflectHLSL::VarDecl v = std::get<ReflectHLSL::VarDecl>(d);
+                v.GetGeneration(ctx, 2);
+                
+                if (v.GetTypename() == "StructuredBuffer" ||
+                    v.GetTypename() == "RWStructuredBuffer")
+                {
+                    structuredVariables.push_back(v);
+                }
             } else if (d.index() == 1) {
                 const std::string name = std::get<ReflectHLSL::FDecl>(d).name.Val;
 
                 if (!name.empty()) {
-                    ctx.Output += "\t\tstatic constexpr uint3 " + name + "InvokeSize = " + currentInvokeSize;
+                    ctx.Output += "\n\t\tstatic constexpr uint3 " /*+ name +*/ "InvokeSize = " + currentInvokeSize;
                     currentInvokeSize.clear();
                 }
             } else if (d.index() == 2) {
@@ -114,7 +121,54 @@ int main(int argc, char** argv) {
             }
         }
 
-        writeFile(R"(./test/Out2.inl)", ReflectHLSL::Generate(ctx, dctx));
+        ctx.Output += "\n\t\tinline Program(Context& ctx)\n";
+        for (size_t i = 0; i < structuredVariables.size(); ++i) {
+            if (i == 0) {
+                ctx.Output += "\t\t: ";
+            } else {
+                ctx.Output += "\t\t, ";
+            }
+
+            std::string shaderProfile;
+            std::string resourceType;
+            std::string resourceIndex;
+
+            if(structuredVariables[i].semantic.has_value()) {
+                auto semantic = *structuredVariables[i].semantic;
+                if (semantic.parens.has_value()) {
+                    auto params = semantic.parens->params;
+                    shaderProfile = params[0].id.Val;
+
+                    if (params.size() >= 2) {
+                        resourceType = params[1].id.Val;
+
+                        if (params[1].arr.has_value()) {
+                            auto sizes = params[1].arr->Sizes;
+                            resourceIndex = sizes[0];
+                        }
+                    }
+                }
+            }
+
+            ctx.Output += structuredVariables[i].GetName() + "(ctx, \"" + structuredVariables[i].GetName() + "\"";
+            
+            if (!shaderProfile.empty()) {
+                ctx.Output += ", \"" + shaderProfile + "\"";
+            }
+
+            if (!resourceType.empty()) {
+                ctx.Output += ", \"" + resourceType + "\"";
+            }
+
+            if (!resourceIndex.empty()) {
+                ctx.Output += ", " + resourceIndex;
+            }
+
+            ctx.Output += ")\n";
+        }
+        ctx.Output += "\t\t{ }\n";
+
+        writeFile(R"(./test/Out.inl)", ReflectHLSL::Generate(ctx, dctx));
     } catch (parsegen::parse_error const& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;

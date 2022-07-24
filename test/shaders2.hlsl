@@ -14,7 +14,7 @@ struct BufType
 
 StructuredBuffer<BufType> Buffer0 : register(t0);
 StructuredBuffer<BufType> Buffer1 : register(t1);
-RWStructuredBuffer<BufType> BufferOut : register(u0);
+RWStructuredBuffer<BufType> BufferOut : register(u0, s[4]);
 
 [numthreads(1, 1, 1)]
 void CSMain(uint3 DTid : SV_DispatchThreadID)

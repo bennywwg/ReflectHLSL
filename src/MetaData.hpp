@@ -42,6 +42,8 @@ namespace ReflectHLSL {
     struct RParen { };
     struct Less { };
     struct Great { };
+    struct DoubleQuote { };
+    struct SingleQuote { };
 
     // Nonterminals
     using LiteralList = std::vector<std::shared_ptr<LiteralValue>>;
@@ -68,15 +70,20 @@ namespace ReflectHLSL {
     struct Param { };
     struct ParamList { };
     struct Default { LiteralValue Val; };
-    struct ArrayQual2 {
+    struct ArrayQual {
         std::string Size;
     };
     struct ArrayQuals {
         std::vector<std::string> Sizes;
     };
-    using MaybeArrayQual = std::optional<ArrayQuals>;
-    struct SemanticParens {
+    using MaybeArrayQuals = std::optional<ArrayQuals>;
+    struct RegisterParam {
         ID id;
+        MaybeArrayQuals arr;
+    };
+    using RegisterParamList = std::vector<RegisterParam>;
+    struct SemanticParens {
+        RegisterParamList params;
     };
     using MaybeSemanticParens = std::optional<SemanticParens>;
     struct Semantic {
@@ -93,11 +100,17 @@ namespace ReflectHLSL {
     using DeclMode = std::optional<std::variant<Default, StructBody>>;
     struct VarDecl {
         IDList ids;
-        MaybeArrayQual arrayQual;
+        MaybeArrayQuals arrayQual;
         MaybeSemantic semantic;
         DeclMode mode;
 
         void GetGeneration(GenerationContext& ctx, int tabs);
+        inline std::string GetTypename() const {
+            return (ids.size() > 2 ? ids[1] : ids[0]).id.Val;
+        }
+        inline std::string GetName() const {
+            return ids.back().id.Val;
+        }
     };
     using AnyDecl = std::variant<VarDecl, FDecl, FunctionAttrib>;
     struct DeclarationList {

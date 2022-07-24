@@ -69,27 +69,43 @@ namespace ReflectHLSL {
                 {
                     // Example:      vvv
                     //          int a[4] : register(b0) = { 0 };
-                    Rule([]() -> MaybeArrayQual { return std::nullopt; });
-                    Rule([](ArrayQuals Quals) -> MaybeArrayQual { return Quals; });
-                    Rule([](ArrayQual2 Qual) -> ArrayQuals { return { { Qual.Size } }; });
-                    Rule([](ArrayQuals Quals, ArrayQual2 Qual) -> ArrayQuals {
+                    Rule([]() -> MaybeArrayQuals { return std::nullopt; });
+                    Rule([](ArrayQuals Quals) -> MaybeArrayQuals { return Quals; });
+                    Rule([](ArrayQual Qual) -> ArrayQuals { return { { Qual.Size } }; });
+                    Rule([](ArrayQuals Quals, ArrayQual Qual) -> ArrayQuals {
                         Quals.Sizes.push_back(Qual.Size);
                         return Quals;
                     });
-                    Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual2 { return { id.Val }; });
-                    Rule([](LBrack, MaybeSpace, Int val, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual2 { return { val.Val }; });
+                    Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual { return { id.Val }; });
+                    Rule([](LBrack, MaybeSpace, Int val, MaybeSpace, RBrack, MaybeSpace) -> ArrayQual { return { val.Val }; });
 
                     // Example:          vvvvvvvvvvvvvv
                     //          int a[4] : register(b0) = { 0 };
                     Rule([]() -> MaybeSemantic { return std::nullopt; });
                     Rule([](Colon, MaybeSpace, ID id, MaybeSpace, MaybeSemanticParens parens) -> MaybeSemantic {
-                        return Semantic{ id, parens };
+                        return Semantic { id, parens };
                     });
 
-                    // Example:                    vvvv
-                    //          int a[4] : register(b0) = { 0 };
-                    Rule([]() { return MaybeSemanticParens(std::nullopt); });
-                    Rule([](LParen, MaybeSpace, ID id, MaybeSpace, RParen, MaybeSpace) { return MaybeSemanticParens{ { id } }; });
+                    {
+                        Rule([](ID id, MaybeSpace, MaybeArrayQuals arr) -> RegisterParam {
+                            return { id, arr };
+                        });
+                        
+                        Rule([](RegisterParam param) -> RegisterParamList {
+                            return { param };
+                        });
+                        Rule([](RegisterParamList list, Comma, MaybeSpace, RegisterParam param) -> RegisterParamList {
+                            list.push_back(param);
+                            return list;
+                        });
+
+                        // Example:                    vvvv
+                        //          int a[4] : register(b0) = { 0 };
+                        Rule([]() -> MaybeSemanticParens { return std::nullopt; });
+                        Rule([](LParen, MaybeSpace, RegisterParamList params, RParen, MaybeSpace) -> MaybeSemanticParens {
+                            return SemanticParens { params };
+                        });
+                    }
 
                     // Example:                         vvvvvvv
                     //          int a[4] : register(b0) = { 0 };
@@ -118,7 +134,7 @@ namespace ReflectHLSL {
                 Rule([](
                     IDList ids,
                     MaybeSpace,
-                    MaybeArrayQual arr,
+                    MaybeArrayQuals arr,
                     MaybeSemantic sem,
                     DeclMode mode,
                     Semicolon,
@@ -197,9 +213,9 @@ namespace ReflectHLSL {
                 Token<Colon>(":");
                 Token<Comma>(",");
                 Token<ID>(parsegen::regex::identifier());
-                Token<Float>(parsegen::regex::signed_floating_point());
+                Token<Float>(parsegen::regex::signed_floating_point_not_integer());
                 Token<Int>(parsegen::regex::signed_integer());
-                Token<Op>("[\\.\\*\\/\\|\\+\\-&\\?]");
+                Token<Op>("[\\.\\*\\/\\\\\\|\\+\\-&\\?]");
                 Token<LBrace>("\\{");
                 Token<RBrace>("\\}");
                 Token<LBrack>("\\[");
@@ -208,6 +224,8 @@ namespace ReflectHLSL {
                 Token<RParen>("\\)");
                 Token<Less>("<");
                 Token<Great>(">");
+                Token<DoubleQuote>("\\\"");
+                Token<SingleQuote>("\\'");
             }
         }
     
