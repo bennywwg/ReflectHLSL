@@ -4,6 +4,8 @@
 
 #include "HLSL.hpp"
 
+static std::filesystem::file_time_type lastWriteTime;
+
 // Replace comments with spaces
 std::string removeComments(std::string input) {
     std::string res = input;
@@ -70,7 +72,22 @@ std::string removeDefines(ReflectHLSL::DefinesContext& ctx, std::string input) {
     return res;
 }
 
-int ProcessFile(std::filesystem::path input) {
+int ProcessFile(std::filesystem::path input, std::filesystem::path output = "") {
+    if (output.empty()) {
+        output = input;
+        output += ".inl";
+    }
+
+    // Early return if file is not out of date
+    if (std::filesystem::exists(output)) {
+        auto inputTime = std::filesystem::last_write_time(input);
+        auto outputTime = std::filesystem::last_write_time(output);
+
+        if (inputTime < outputTime && lastWriteTime < outputTime) {
+            return 0;
+        }
+    }
+
     try {
         parsegen::Parser<ReflectHLSL::HLSL> parse;
 
@@ -172,12 +189,9 @@ int ProcessFile(std::filesystem::path input) {
         }
         ctx.Output += "\t\t{ }\n";
 
-        // Add .inl file suffix
-        input += ".inl";
+        writeFile(output, ReflectHLSL::Generate(ctx, dctx));
 
-        writeFile(input, ReflectHLSL::Generate(ctx, dctx));
-
-        std::cout << input.string() << std::endl;
+        std::cout << output.string() << std::endl;
 
         return 0;
     }
@@ -209,6 +223,12 @@ int ScanDir(std::filesystem::path scanDirectory) {
 }
 
 int main(int argc, char** argv) {
+    // Get time point for when this executable was updated
+    {
+        const std::filesystem::path executablePath = argv[0];
+        lastWriteTime = std::filesystem::last_write_time(executablePath);
+    }
+
     // If -scan is passed, scan the directory for files to process
     if (argc >= 2 && std::string(argv[1]) == "-scan") {
 		std::filesystem::path scanDirectory = argc >= 3 ? std::string(argv[2]) : std::string();
