@@ -37,16 +37,28 @@ struct Generator {
 	using RWTexture2D = TextureConfig::template RWTexture2D<T>::typename Type;
 
 	struct Program {
-		struct PixelShaderInput {
+		struct ModelConstantBuffer { // : register
+			float4x4 model;
+			float4 fade;
+		};
+		struct ViewProjectionConstantBuffer { // : register
+			float4x4 viewProjection[2];
+		};
+		struct VertexShaderInput {
+			min16float3 pos; // : POSITION
+			min16float3 color; // : COLOR0
+			min16float2 texCoord; // : TEXCOORD1
+			uint instId; // : SV_InstanceID
+		};
+		struct VertexShaderOutput {
 			min16float4 pos; // : SV_POSITION
 			min16float3 color; // : COLOR0
 			min16float2 texCoord; // : TEXCOORD1
+			uint viewId; // : TEXCOORD0
 		};
-		Texture2D<float3> tex; // : t0
-		SamplerState samp; // : s0
 
-		// min16float4
-		// - PixelShaderInput input
+		// VertexShaderOutput
+		// - VertexShaderInput input
 		inline Program(Context& ctx)
 		{ }
 	};

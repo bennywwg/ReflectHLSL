@@ -7,15 +7,16 @@
 #include <sstream>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 
 #include <glm/glm.hpp>
 
-static void writeFile(std::string path, std::string text) {
+static void writeFile(std::filesystem::path path, std::string text) {
 	std::ofstream file(path);
 	file << text;
 }
 
-static std::string loadFile(std::string path) {
+static std::string loadFile(std::filesystem::path path) {
 	std::ifstream t(path);
 	return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
 }

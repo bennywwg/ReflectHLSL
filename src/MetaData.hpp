@@ -64,11 +64,16 @@ namespace ReflectHLSL {
         ID id;
         LiteralList literals;
     };
-    struct FDecl {
+    struct Param {
+        ID typeName;
         ID name;
     };
-    struct Param { };
-    struct ParamList { };
+    using ParamList = std::vector<Param>;
+    struct FDecl {
+        ID returnType;
+        ID name;
+        ParamList params;
+    };
     struct Default { LiteralValue Val; };
     struct ArrayQual {
         std::string Size;

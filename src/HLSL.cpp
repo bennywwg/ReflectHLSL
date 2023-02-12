@@ -70,16 +70,7 @@ std::string removeDefines(ReflectHLSL::DefinesContext& ctx, std::string input) {
     return res;
 }
 
-int main(int argc, char** argv) {
-    std::string input = argc >= 2 ? std::string(argv[1]) : std::string();
-    
-    input = R"(./test/shaders2.hlsl)";
-
-    if (input.empty()) {
-        std::cerr << "No filename given" << std::endl;
-        return 1;
-    }
-
+int ProcessFile(std::filesystem::path input) {
     try {
         parsegen::Parser<ReflectHLSL::HLSL> parse;
 
@@ -91,7 +82,7 @@ int main(int argc, char** argv) {
         ReflectHLSL::Program p = parse.Parse(s);
 
         ReflectHLSL::GenerationContext ctx;
-       
+
 
         std::string currentInvokeSize;
         std::vector<ReflectHLSL::VarDecl> structuredVariables;
@@ -100,20 +91,32 @@ int main(int argc, char** argv) {
             if (d.index() == 0) {
                 ReflectHLSL::VarDecl v = std::get<ReflectHLSL::VarDecl>(d);
                 v.GetGeneration(ctx, 2);
-                
+
                 if (v.GetTypename() == "StructuredBuffer" ||
                     v.GetTypename() == "RWStructuredBuffer")
                 {
                     structuredVariables.push_back(v);
                 }
-            } else if (d.index() == 1) {
-                const std::string name = std::get<ReflectHLSL::FDecl>(d).name.Val;
+            }
+            else if (d.index() == 1) {
+                const ReflectHLSL::FDecl func = std::get<ReflectHLSL::FDecl>(d);
 
-                if (!name.empty()) {
+                const std::string returnType = func.returnType.Val;
+                const std::string name = func.name.Val;
+
+                ctx.Output += "\n\t\t// " + returnType;
+
+                // Output all the parameter types
+                for (auto param : func.params) {
+                    ctx.Output += "\n\t\t// - " + param.typeName.Val + " " + param.name.Val;
+                }
+
+                if (!name.empty() && !currentInvokeSize.empty()) {
                     ctx.Output += "\n\t\tstatic constexpr uint3 " /*+ name +*/ "InvokeSize = " + currentInvokeSize;
                     currentInvokeSize.clear();
                 }
-            } else if (d.index() == 2) {
+            }
+            else if (d.index() == 2) {
                 currentInvokeSize = "uint3(" +
                     std::get<ReflectHLSL::FunctionAttrib>(d).literals[0]->format() + ", " +
                     std::get<ReflectHLSL::FunctionAttrib>(d).literals[1]->format() + ", " +
@@ -125,7 +128,8 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < structuredVariables.size(); ++i) {
             if (i == 0) {
                 ctx.Output += "\t\t: ";
-            } else {
+            }
+            else {
                 ctx.Output += "\t\t, ";
             }
 
@@ -133,7 +137,7 @@ int main(int argc, char** argv) {
             std::string resourceType;
             std::string resourceIndex;
 
-            if(structuredVariables[i].semantic.has_value()) {
+            if (structuredVariables[i].semantic.has_value()) {
                 auto semantic = *structuredVariables[i].semantic;
                 if (semantic.parens.has_value()) {
                     auto params = semantic.parens->params;
@@ -151,7 +155,7 @@ int main(int argc, char** argv) {
             }
 
             ctx.Output += structuredVariables[i].GetName() + "(ctx, \"" + structuredVariables[i].GetName() + "\"";
-            
+
             if (!shaderProfile.empty()) {
                 ctx.Output += ", \"" + shaderProfile + "\"";
             }
@@ -168,14 +172,62 @@ int main(int argc, char** argv) {
         }
         ctx.Output += "\t\t{ }\n";
 
-        writeFile(R"(./test/Out.inl)", ReflectHLSL::Generate(ctx, dctx));
-    } catch (parsegen::parse_error const& ex) {
-        std::cerr << ex.what() << std::endl;
-        return 1;
-    } catch (std::exception const& ex) {
+        // Add .inl file suffix
+        input += ".inl";
+
+        writeFile(input, ReflectHLSL::Generate(ctx, dctx));
+
+        std::cout << input.string() << std::endl;
+
+        return 0;
+    }
+    catch (parsegen::parse_error const& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;
     }
+    catch (std::exception const& ex) {
+        std::cerr << ex.what() << std::endl;
+        return 1;
+    }
+}
 
-    return 0;
+int ScanDir(std::filesystem::path scanDirectory) {
+    // Process all files in the current directory
+    int anyError = 0;
+    for (auto& p : std::filesystem::recursive_directory_iterator(scanDirectory)) {
+        const std::string extension = p.path().extension().string();
+        if (p.is_regular_file() && (extension == ".vert" || extension == ".frag" || extension == ".comp")) {
+            if (ProcessFile(p.path()))
+            {
+                std::cerr << "Failed to process " << p.path().string() << std::endl;
+                anyError = 1;
+            }
+        }
+    }
+
+    return anyError;
+}
+
+int main(int argc, char** argv) {
+    // If -scan is passed, scan the directory for files to process
+    if (argc >= 2 && std::string(argv[1]) == "-scan") {
+		std::filesystem::path scanDirectory = argc >= 3 ? std::string(argv[2]) : std::string();
+        if (scanDirectory.empty()) {
+            std::cerr << "No directory specified for -scan" << std::endl;
+            return 1;
+        }
+
+        return ScanDir(scanDirectory);
+	} else if (argc >= 2 && std::string(argv[1]) == "-file") {
+        std::filesystem::path filePath = argc >= 3 ? std::string(argv[2]) : std::string();
+        if (filePath.empty()) {
+            std::cerr << "No file specified for -file" << std::endl;
+			return 1;
+        }
+        return ProcessFile(filePath);
+    }
+    else
+    {
+        return ScanDir(std::filesystem::current_path());
+    }
 }

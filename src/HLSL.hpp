@@ -6,6 +6,7 @@
 #include <map>
 #include <variant>
 #include <tuple>
+#include <filesystem>
 
 #include <frontend.hpp>
 
@@ -160,18 +161,56 @@ namespace ReflectHLSL {
                     return list;
                 });
 
-                Rule([](IDList) { return Param{ }; });
-                Rule([](IDList, MaybeSpace, Colon, MaybeSpace, ID) { return Param{ }; });
-                Rule([](MaybeSpace) { return ParamList{ }; });
-                Rule([](Param) { return ParamList{ }; });
-                Rule([](ParamList, Comma, MaybeSpace, Param) { return ParamList{ }; });
+                Rule([](IDList ids) {
+                    return Param{
+                        ids[0].id.Val,
+                        ids.size() > 1 ? ids[1].id.Val : std::string()
+                    };
+                });
+                Rule([](IDList ids, MaybeSpace, Colon, MaybeSpace, ID) {
+                    return Param {
+                        ids[0].id.Val,
+                        ids.size() > 1 ? ids[1].id.Val : std::string()
+                    };
+                });
+                Rule([](MaybeSpace) {
+                    return ParamList { };
+                });
+                Rule([](Param param) {
+                    return ParamList { param };
+                });
+                Rule([](ParamList paramList, Comma, MaybeSpace, Param param) {
+                    paramList.push_back(param);
+                    return paramList;
+                });
 
                 Rule([](LBrack, MaybeSpace, ID id, MaybeSpace, LParen, MaybeSpace, LiteralList literals, RParen, MaybeSpace, RBrack, MaybeSpace) -> FunctionAttrib {
                     return { id, literals };
                 });
 
-                Rule([](IDList ids, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Scope, MaybeSpace) { return FDecl{ ids[1].id }; });
-                Rule([](IDList ids, MaybeSpace, LParen, ParamList, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace) { return FDecl{ ids[1].id }; });
+                Rule([](IDList ids, MaybeSpace, LParen, ParamList params, RParen, MaybeSpace, Scope, MaybeSpace) {
+                    ID returnType = ids[0].id;
+                    ID name = ids[1].id;
+
+                    // Remove the return type and name from the list
+                    ids.erase(ids.begin(), ids.begin() + 2);
+                    
+                    return FDecl{
+                        returnType,
+						name,
+                        params
+                    };
+                });
+                Rule([](IDList ids, MaybeSpace, LParen, ParamList params, RParen, MaybeSpace, Colon, MaybeSpace, ID, MaybeSpace, Scope, MaybeSpace) {
+                    ID returnType = ids[0].id;
+                    ID name = ids[1].id;
+
+                    return FDecl{
+                        returnType,
+                        name,
+                        params
+                    };
+                });
 
                 Rule([](Op) { return AnyOp{ }; });
                 Rule([](Comma) { return AnyOp{ }; });
@@ -215,7 +254,7 @@ namespace ReflectHLSL {
                 Token<ID>(parsegen::regex::identifier());
                 Token<Float>(parsegen::regex::signed_floating_point_not_integer());
                 Token<Int>(parsegen::regex::signed_integer());
-                Token<Op>("[\\.\\*\\/\\\\\\|\\+\\-&\\?]");
+                Token<Op>("[\\.\\*\\/\\\\\\|\\+\\-&\\?\\%]");
                 Token<LBrace>("\\{");
                 Token<RBrace>("\\}");
                 Token<LBrack>("\\[");

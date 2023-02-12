@@ -32,6 +32,7 @@ namespace ReflectHLSL {
 			"template<\n"
 			"	typename VectorConfig,\n"
 			"	typename BufferConfig,\n"
+			"	typename TextureConfig,\n"
 			"	typename Context\n"
 			">\n"
 			"struct Generator {\n"
@@ -43,6 +44,7 @@ namespace ReflectHLSL {
 			"	using int2 = VectorConfig::template Vector<2, int32_t>::typename Type;\n"
 			"	using int3 = VectorConfig::template Vector<3, int32_t>::typename Type;\n"
 			"	using int4 = VectorConfig::template Vector<4, int32_t>::typename Type;\n"
+			"	using uint = uint32_t;\n"
 			"	using uint1 = uint32_t;\n"
 			"	using uint2 = VectorConfig::template Vector<2, uint32_t>::typename Type;\n"
 			"	using uint3 = VectorConfig::template Vector<3, uint32_t>::typename Type;\n"
@@ -58,6 +60,12 @@ namespace ReflectHLSL {
 			"\n"
 			"	template<typename T>\n"
 			"	using RWStructuredBuffer = BufferConfig::template RWBuffer<T>::typename Type;\n"
+			"\n"
+			"	template<typename T>\n"
+			"	using Texture2D = TextureConfig::template Texture2D<T>::typename Type;\n"
+			"\n"
+			"	template<typename T>\n"
+			"	using RWTexture2D = TextureConfig::template RWTexture2D<T>::typename Type;\n"
 			"\n"
 			"	struct Program {\n";
 
