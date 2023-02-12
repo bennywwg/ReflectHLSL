@@ -21,6 +21,11 @@ static std::string loadFile(std::filesystem::path path) {
 	return std::string((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
 }
 
+static std::vector<uint8_t> loadFileBytes(std::filesystem::path path) {
+	std::ifstream t(path, std::ios::binary);
+	return std::vector<uint8_t>((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+}
+
 namespace ReflectHLSL {
 	struct DefinesContext {
 		std::vector<std::string> Defines;

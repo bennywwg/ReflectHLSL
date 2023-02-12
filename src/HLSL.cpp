@@ -78,6 +78,9 @@ int ProcessFile(std::filesystem::path input, std::filesystem::path output = "") 
         output += ".inl";
     }
 
+    std::filesystem::path spvPath = input;
+    spvPath += ".spv";
+
     // Early return if file is not out of date
     if (std::filesystem::exists(output)) {
         auto inputTime = std::filesystem::last_write_time(input);
@@ -188,6 +191,39 @@ int ProcessFile(std::filesystem::path input, std::filesystem::path output = "") 
             ctx.Output += ")\n";
         }
         ctx.Output += "\t\t{ }\n";
+
+        // Try and load bytecode from the .spv file
+        {
+            std::vector<uint8_t> bytecode;
+            if (std::filesystem::exists(spvPath)) {
+				bytecode = loadFileBytes(spvPath);
+			}
+
+            const size_t size = bytecode.size();
+            const size_t roundedUpSize = (size + 7) & ~7;
+
+            // Pad with zeros to make it 8 byte aligned
+            if (size != roundedUpSize) {
+				bytecode.resize(roundedUpSize);
+            }
+
+            uint64_t* const bytecode64 = reinterpret_cast<uint64_t*>(bytecode.data());
+            const size_t numU64s = roundedUpSize / 8;
+            std::stringstream stream;
+
+            for (size_t i = 0; i < numU64s; ++i) {
+                if (i != 0) {
+					stream << ", ";
+                    if (i % 8 == 0) { // Visually nicer
+                        stream << "\n\t\t\t";
+                    }
+				}
+                stream << "0x" << std::hex << std::setw(16) << std::setfill('0') << bytecode64[i];// << "ull";
+			}
+
+            ctx.Output += "\n\t\tstatic constexpr size_t BytecodeSize = " + std::to_string(size) + ";";
+            ctx.Output += "\n\t\tstatic constexpr uint8_t Bytecode[] = {\n\t\t\t" + stream.str() + "\n\t\t};\n";
+        }
 
         writeFile(output, ReflectHLSL::Generate(ctx, dctx));
 
